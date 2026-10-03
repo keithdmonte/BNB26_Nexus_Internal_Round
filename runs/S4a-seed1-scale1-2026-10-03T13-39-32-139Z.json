@@ -1,0 +1,125 @@
+{
+  "runId": "ea1d78e6-9684-47b5-8d8e-509678a2ae0c",
+  "scenario": "S4a",
+  "seed": 1,
+  "mode": "lottery",
+  "defenses": {
+    "risk": false,
+    "rateLimit": true
+  },
+  "dropId": "cf471e83-d539-48a3-9cf0-ca915b4402ff",
+  "dropStatus": "drawn",
+  "inventory": 500,
+  "seatsAllocated": 500,
+  "summary": {
+    "botAccountShare": 0.04,
+    "botSeatShare": 0.038,
+    "humanSeatShare": 0.962,
+    "pWinHuman": 0.010020833333333333,
+    "pWinBot": 0.0095,
+    "advantageMultiplier": 0.9480249480249481,
+    "humansWonNothing": false,
+    "humanSuccessRate": 0.010020833333333333,
+    "humanFalseFlagRate": 0,
+    "botFlagRecall": 0,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 48000,
+      "entered": 48000,
+      "flagged": 0,
+      "winners": 481,
+      "seats": 481
+    },
+    "multi": {
+      "accounts": 2000,
+      "entered": 2000,
+      "flagged": 0,
+      "winners": 19,
+      "seats": 19
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "multi-0",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 12,
+      "fairShare": 10
+    },
+    {
+      "operatorId": "multi-1",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 7,
+      "fairShare": 10
+    }
+  ],
+  "integrity": {
+    "inventory": 500,
+    "activeAllocations": 500,
+    "heldSeats": 500,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "serverCounters": {
+    "req_entry": 52140,
+    "entries": 50000
+  },
+  "client": {
+    "activeSeconds": 69.7,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 12,
+    "simValid": true,
+    "endpoints": {
+      "human|write": {
+        "requests": 50137,
+        "p50": 2,
+        "p95": 752.6,
+        "p99": 831.7,
+        "codes": {
+          "201": 48000,
+          "503:OVERLOADED": 2137
+        },
+        "errorRate": 0.0426232123980294
+      },
+      "multi|write": {
+        "requests": 2003,
+        "p50": 456.7,
+        "p95": 1227.4,
+        "p99": 1797.3,
+        "codes": {
+          "201": 2000,
+          "503:OVERLOADED": 3
+        },
+        "errorRate": 0.0014977533699450823
+      },
+      "human|me": {
+        "requests": 9622,
+        "p50": 1.8,
+        "p95": 754.6,
+        "p99": 837.5,
+        "codes": {
+          "200": 9622
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 2003,
+        "p50": 365.9,
+        "p95": 569.6,
+        "p99": 683.5,
+        "codes": {
+          "200": 2003
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

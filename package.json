@@ -1,23 +1,28 @@
 {
-  "name": "nexus-fairdrop",
+  "name": "fairdrop",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "sim": "tsx scripts/sim/run.ts",
+    "verify": "tsx scripts/verify.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=20.9"
+  },
   "dependencies": {
     "jose": "^6.2.12",
-    "next": "^15.5.27",
+    "next": "^16.3.8",
     "pg": "^8.23.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
@@ -27,5 +32,6 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
-  }
+  },
+  "type": "module"
 }

@@ -1,0 +1,172 @@
+{
+  "runId": "3439038d-3e0b-4359-bd61-1e6c7e8ff65d",
+  "scenario": "S2",
+  "seed": 1,
+  "mode": "fcfs",
+  "defenses": {
+    "risk": false,
+    "rateLimit": false
+  },
+  "dropId": "7d740ac8-e4c5-43d7-95ec-b5868b15f654",
+  "dropStatus": "done",
+  "inventory": 50,
+  "seatsAllocated": 50,
+  "summary": {
+    "botAccountShare": 0.05,
+    "botSeatShare": 0.72,
+    "humanSeatShare": 0.28,
+    "pWinHuman": 0.0029473684210526317,
+    "pWinBot": 0.144,
+    "advantageMultiplier": 48.857142857142854,
+    "humanSuccessRate": 0.0029473684210526317,
+    "humanFalseFlagRate": null,
+    "botFlagRecall": null,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 4750,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 14,
+      "seats": 14
+    },
+    "fast_bot": {
+      "accounts": 245,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 36,
+      "seats": 36
+    },
+    "flooder": {
+      "accounts": 5,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 0,
+      "seats": 0
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "fast_bot-4",
+      "type": "fast_bot",
+      "accounts": 49,
+      "seats": 12,
+      "fairShare": 0.49
+    },
+    {
+      "operatorId": "fast_bot-2",
+      "type": "fast_bot",
+      "accounts": 49,
+      "seats": 8,
+      "fairShare": 0.49
+    },
+    {
+      "operatorId": "fast_bot-1",
+      "type": "fast_bot",
+      "accounts": 49,
+      "seats": 7,
+      "fairShare": 0.49
+    },
+    {
+      "operatorId": "fast_bot-0",
+      "type": "fast_bot",
+      "accounts": 49,
+      "seats": 5,
+      "fairShare": 0.49
+    },
+    {
+      "operatorId": "fast_bot-3",
+      "type": "fast_bot",
+      "accounts": 49,
+      "seats": 4,
+      "fairShare": 0.49
+    },
+    {
+      "operatorId": "flooder-0",
+      "type": "flooder",
+      "accounts": 5,
+      "seats": 0,
+      "fairShare": 0.05
+    }
+  ],
+  "integrity": {
+    "inventory": 50,
+    "activeAllocations": 50,
+    "heldSeats": 50,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "serverCounters": {
+    "req_purchase": 8083,
+    "purchase_ok": 50,
+    "sold_out": 6855
+  },
+  "client": {
+    "activeSeconds": 26.771,
+    "eventLoopDelayP95Ms": 12,
+    "simValid": true,
+    "endpoints": {
+      "fast_bot|write": {
+        "requests": 1267,
+        "p50": 18.6,
+        "p95": 595.2,
+        "p99": 659.5,
+        "codes": {
+          "201": 36,
+          "409:WINDOW_NOT_OPEN": 1022,
+          "410:SOLD_OUT": 209
+        },
+        "errorRate": 0
+      },
+      "flooder|write": {
+        "requests": 1960,
+        "p50": 4.6,
+        "p95": 7.8,
+        "p99": 19.6,
+        "codes": {
+          "409:WINDOW_NOT_OPEN": 50,
+          "410:SOLD_OUT": 1910
+        },
+        "errorRate": 0
+      },
+      "human|write": {
+        "requests": 4856,
+        "p50": 1,
+        "p95": 9.5,
+        "p99": 90.3,
+        "codes": {
+          "201": 14,
+          "409:WINDOW_NOT_OPEN": 106,
+          "410:SOLD_OUT": 4736
+        },
+        "errorRate": 0
+      },
+      "human|me": {
+        "requests": 940,
+        "p50": 1.6,
+        "p95": 33.5,
+        "p99": 181.5,
+        "codes": {
+          "200": 940
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 2028,
+        "p50": 348,
+        "p95": 515.3,
+        "p99": 628.9,
+        "codes": {
+          "200": 2028
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

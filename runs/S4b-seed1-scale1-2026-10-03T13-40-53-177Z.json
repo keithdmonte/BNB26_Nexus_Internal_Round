@@ -1,0 +1,128 @@
+{
+  "runId": "13f3cc51-f16f-4b79-9d08-ac2f9a26f964",
+  "scenario": "S4b",
+  "seed": 1,
+  "mode": "lottery",
+  "defenses": {
+    "risk": true,
+    "rateLimit": true,
+    "riskPolicy": "collapse"
+  },
+  "dropId": "c142346b-1491-42b2-9fda-c35f42e682eb",
+  "dropStatus": "drawn",
+  "inventory": 500,
+  "seatsAllocated": 500,
+  "summary": {
+    "botAccountShare": 0.04,
+    "botSeatShare": 0,
+    "humanSeatShare": 1,
+    "pWinHuman": 0.010416666666666666,
+    "pWinBot": 0,
+    "advantageMultiplier": 0,
+    "humansWonNothing": false,
+    "humanSuccessRate": 0.010416666666666666,
+    "humanFalseFlagRate": 0.005,
+    "botFlagRecall": 0.999,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 48000,
+      "entered": 48000,
+      "flagged": 240,
+      "winners": 500,
+      "seats": 500
+    },
+    "multi": {
+      "accounts": 2000,
+      "entered": 2000,
+      "flagged": 1998,
+      "winners": 0,
+      "seats": 0
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "multi-0",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 0,
+      "fairShare": 10
+    },
+    {
+      "operatorId": "multi-1",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 0,
+      "fairShare": 10
+    }
+  ],
+  "integrity": {
+    "inventory": 500,
+    "activeAllocations": 500,
+    "heldSeats": 500,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "serverCounters": {
+    "req_entry": 54375,
+    "entries": 50000
+  },
+  "client": {
+    "activeSeconds": 69.727,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 12,
+    "simValid": true,
+    "endpoints": {
+      "human|write": {
+        "requests": 50481,
+        "p50": 2.1,
+        "p95": 1281.5,
+        "p99": 1333,
+        "codes": {
+          "201": 48000,
+          "409:WINDOW_NOT_OPEN": 148,
+          "503:OVERLOADED": 2333
+        },
+        "errorRate": 0.0462154077771835
+      },
+      "multi|write": {
+        "requests": 3894,
+        "p50": 705.2,
+        "p95": 1075.2,
+        "p99": 1094.2,
+        "codes": {
+          "201": 2000,
+          "409:WINDOW_NOT_OPEN": 1855,
+          "503:OVERLOADED": 39
+        },
+        "errorRate": 0.010015408320493066
+      },
+      "human|me": {
+        "requests": 9622,
+        "p50": 8.1,
+        "p95": 1283.1,
+        "p99": 1338.6,
+        "codes": {
+          "200": 9622
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 2003,
+        "p50": 389.3,
+        "p95": 606.3,
+        "p99": 642.6,
+        "codes": {
+          "200": 2003
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

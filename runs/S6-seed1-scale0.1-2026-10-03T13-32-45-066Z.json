@@ -1,0 +1,125 @@
+{
+  "runId": "b646b4ce-82ea-4bf7-8685-3060e7969082",
+  "scenario": "S6",
+  "seed": 1,
+  "mode": "fcfs_unsafe",
+  "defenses": {
+    "risk": false,
+    "rateLimit": false
+  },
+  "dropId": "d17e4fb5-8008-4fec-9652-8abf68b5253d",
+  "dropStatus": "done",
+  "inventory": 50,
+  "seatsAllocated": 110,
+  "summary": {
+    "botAccountShare": 0.16666666666666666,
+    "botSeatShare": 1,
+    "humanSeatShare": 0,
+    "pWinHuman": 0,
+    "pWinBot": 0.55,
+    "advantageMultiplier": null,
+    "humansWonNothing": true,
+    "humanSuccessRate": 0,
+    "humanFalseFlagRate": null,
+    "botFlagRecall": null,
+    "oversell": 60,
+    "duplicateUsers": 0,
+    "integrityOk": false
+  },
+  "byType": {
+    "human": {
+      "accounts": 1000,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 0,
+      "seats": 0
+    },
+    "fast_bot": {
+      "accounts": 200,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 110,
+      "seats": 110
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "fast_bot-1",
+      "type": "fast_bot",
+      "accounts": 100,
+      "seats": 59,
+      "fairShare": 9.166666666666666
+    },
+    {
+      "operatorId": "fast_bot-0",
+      "type": "fast_bot",
+      "accounts": 100,
+      "seats": 51,
+      "fairShare": 9.166666666666666
+    }
+  ],
+  "integrity": {
+    "inventory": 50,
+    "activeAllocations": 110,
+    "heldSeats": 0,
+    "oversell": 60,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 12,
+    "inventoryConsistent": false,
+    "ok": false
+  },
+  "serverCounters": {
+    "req_purchase": 1446,
+    "purchase_ok": 110,
+    "sold_out": 1090
+  },
+  "client": {
+    "activeSeconds": 13.782,
+    "eventLoopDelayP95Ms": 12,
+    "simValid": true,
+    "endpoints": {
+      "fast_bot|write": {
+        "requests": 446,
+        "p50": 47,
+        "p95": 223.8,
+        "p99": 234.7,
+        "codes": {
+          "201": 110,
+          "409:WINDOW_NOT_OPEN": 246,
+          "410:SOLD_OUT": 90
+        },
+        "errorRate": 0
+      },
+      "human|write": {
+        "requests": 1000,
+        "p50": 1.1,
+        "p95": 2.9,
+        "p99": 4.3,
+        "codes": {
+          "410:SOLD_OUT": 1000
+        },
+        "errorRate": 0
+      },
+      "human|me": {
+        "requests": 191,
+        "p50": 1.2,
+        "p95": 3.5,
+        "p99": 4.3,
+        "codes": {
+          "200": 191
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 1000,
+        "p50": 237.9,
+        "p95": 359.2,
+        "p99": 372.1,
+        "codes": {
+          "200": 1000
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

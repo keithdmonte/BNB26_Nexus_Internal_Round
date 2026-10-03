@@ -49,9 +49,10 @@ describe("entries", () => {
   });
 
   it("guard rejects exclusion updates after freeze", async () => {
-    const d = await makeDrop("lottery", 10, "closed");
+    const d = await makeDrop("lottery", 10);
     const [u] = await makeUsers(1);
     await insertEntry(d, u);
+    await pool().query("UPDATE drops SET status = 'closed' WHERE id = $1", [d]);
     await pool().query("UPDATE entries SET status = 'excluded' WHERE drop_id = $1", [d]);
     await pool().query("UPDATE drops SET status = 'frozen' WHERE id = $1", [d]);
     await expect(

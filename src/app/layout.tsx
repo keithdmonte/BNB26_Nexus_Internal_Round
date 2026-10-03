@@ -1,9 +1,12 @@
-export const metadata = { title: "Fair Drop" };
+import "./globals.css";
+
+export const metadata = { title: "Fair Drop", description: "Bot-resistant high-demand drops" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 16 }}>{children}</body>
+      <head><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body>{children}</body>
     </html>
   );
 }
