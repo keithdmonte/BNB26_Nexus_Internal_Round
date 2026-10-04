@@ -75,7 +75,7 @@ async function call(
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
 // ---------- population ----------
-interface Actor { type: ActorType; operatorId?: string; ip: string; fp: string; ageS: number; token?: string; rps?: number; durationS?: number; arrivalMs?: number; refresh?: boolean }
+interface Actor { type: ActorType; operatorId?: string; ip: string; fp: string; ageS: number; token?: string; userId?: string; rps?: number; durationS?: number; arrivalMs?: number; refresh?: boolean }
 
 function buildPopulation(s: Scenario): Actor[] {
   const actors: Actor[] = [];
@@ -201,7 +201,10 @@ async function main() {
       body: { accounts: batch.map((a) => ({ actorType: a.type, operatorId: a.operatorId, deviceFp: a.fp, signupIp: a.ip, ageS: a.ageS + leadS })) },
     });
     if (r.status !== 201) throw new Error(`accounts failed: ${r.code}`);
-    r.body.accounts.forEach((x: { token: string }, j: number) => (batch[j].token = x.token));
+    r.body.accounts.forEach((x: { token: string; userId: string }, j: number) => {
+      batch[j].token = x.token;
+      batch[j].userId = x.userId;
+    });
   }
   stats.clear();
   console.log(`[sim] run=${runId} drop=${dropId} opens in ${((opensAtLocal - Date.now()) / 1000).toFixed(1)}s, window ${s.windowS}s`);
@@ -244,7 +247,9 @@ async function main() {
       errorRate: (Object.entries(v.codes).filter(([c]) => c.startsWith("5") || c.startsWith("ERR")).reduce((n, [, x]) => n + x, 0)) / v.lat.length,
     }])),
   };
-  const rep = await call("human", "setup", "POST", `/api/sim/runs/${runId}/report`, { body: { client } });
+  // Planned arrival offset per human (ms after open): lets the server compute P(win) by arrival decile.
+  const arrivals = Object.fromEntries(humansList.map((a) => [a.userId!, Math.round(a.arrivalMs ?? 0)]));
+  const rep = await call("human", "setup", "POST", `/api/sim/runs/${runId}/report`, { body: { client, arrivals } });
   const report = rep.body.report;
   mkdirSync("runs", { recursive: true });
   const file = `runs/${s.id}-seed${SEED}-scale${SCALE}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
@@ -259,7 +264,7 @@ seats allocated      ${report.seatsAllocated} / ${report.inventory}
 bot account share    ${f(sm.botAccountShare)}
 bot seat share       ${f(sm.botSeatShare)}
 advantage multiplier ${sm.humansWonNothing ? "inf (humans won 0 seats)" : f(sm.advantageMultiplier, 2)}   (P(win|bot acct) / P(win|human acct); 1.0 = fair)
-human success rate   ${f(sm.humanSuccessRate)}
+human P(win)         ${f(sm.pWinHuman)}
 human false-flag     ${f(sm.humanFalseFlagRate)}
 bot flag recall      ${f(sm.botFlagRecall)}
 oversell / dup users / double-booked seats ${sm.oversell} / ${sm.duplicateUsers} / ${report.integrity.doubleBookedSeats}   integrity ${sm.integrityOk ? "OK" : "VIOLATED"}

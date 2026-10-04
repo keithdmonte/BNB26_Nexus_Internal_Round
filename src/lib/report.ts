@@ -13,7 +13,19 @@ interface Group {
 
 const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
 
-export async function fairnessReport(runId: string) {
+/** P(win) for humans bucketed by arrival time (10 equal-size groups, earliest first). */
+export function arrivalDeciles(arrivals: Record<string, number>, winners: Set<string>) {
+  const xs = Object.entries(arrivals).sort((a, b) => a[1] - b[1]);
+  const out = [];
+  for (let d = 0; d < 10; d++) {
+    const slice = xs.slice(Math.floor((d * xs.length) / 10), Math.floor(((d + 1) * xs.length) / 10));
+    const won = slice.filter(([u]) => winners.has(u)).length;
+    out.push({ decile: d + 1, fromMs: slice[0]?.[1] ?? null, toMs: slice.at(-1)?.[1] ?? null, n: slice.length, winners: won, pWin: slice.length ? won / slice.length : null });
+  }
+  return out;
+}
+
+export async function fairnessReport(runId: string, arrivals?: Record<string, number>) {
   const p = pool();
   const { rows: run } = await p.query(
     "SELECT r.id, r.scenario, r.seed, r.config, r.drop_id, d.mode, d.inventory, d.status FROM sim_runs r JOIN drops d ON d.id = r.drop_id WHERE r.id = $1",
@@ -23,7 +35,7 @@ export async function fairnessReport(runId: string) {
   const { drop_id: dropId, mode, inventory } = run[0];
   const allocTable = mode === "fcfs_unsafe" ? "allocations_unsafe" : "allocations";
   const { rows } = await p.query(
-    `SELECT l.actor_type, l.operator_id,
+    `SELECT l.user_id, l.actor_type, l.operator_id,
             e.status AS entry_status,
             (SELECT count(*)::int FROM ${allocTable} a WHERE a.drop_id = $2 AND a.user_id = l.user_id
                AND a.status IN ('offered','confirmed')) AS seats
@@ -61,6 +73,7 @@ export async function fairnessReport(runId: string) {
     }
   }
   const totalAccounts = human.accounts + bot.accounts;
+  const winnerIds = new Set(rows.filter((r) => r.seats > 0).map((r) => r.user_id as string));
   const pHuman = ratio(human.winners, human.accounts);
   const pBot = ratio(bot.winners, bot.accounts);
   const integrity = await checkIntegrity(p, dropId);
@@ -87,7 +100,6 @@ export async function fairnessReport(runId: string) {
       pWinBot: pBot,
       advantageMultiplier: pHuman && pBot !== null ? pBot / pHuman : null,
       humansWonNothing: human.winners === 0 && bot.winners > 0,
-      humanSuccessRate: pHuman,
       humanFalseFlagRate: ratio(human.flagged, human.entered),
       botFlagRecall: ratio(bot.flagged, bot.entered),
       oversell: integrity.oversell,
@@ -97,6 +109,7 @@ export async function fairnessReport(runId: string) {
     byType,
     operators,
     integrity,
+    arrivalDeciles: arrivals ? arrivalDeciles(arrivals, winnerIds) : null,
     serverCounters: snapshot(dropId),
   };
 }

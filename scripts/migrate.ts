@@ -33,6 +33,8 @@ export async function migrate(connectionString: string, log = console.log) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // CLI only: tests import migrate() and must never pick up the real DATABASE_URL from .env.
+  try { process.loadEnvFile(); } catch { /* no .env: rely on the environment */ }
   migrate(process.env.DATABASE_URL ?? "postgres://localhost:5432/fairdrop").catch((e) => {
     console.error(e.message);
     process.exit(1);

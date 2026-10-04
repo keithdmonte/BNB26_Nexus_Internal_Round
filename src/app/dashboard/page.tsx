@@ -11,6 +11,8 @@ interface Summary {
   advantageMultiplier: number | null;
   humansWonNothing?: boolean;
   humanSuccessRate: number | null;
+  pWinHuman?: number | null;
+  pWinBot?: number | null;
   humanFalseFlagRate: number | null;
   botFlagRecall: number | null;
   oversell: number;
@@ -44,7 +46,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   }
   const p = pool();
   const { rows: runs } = await p.query<RunRow>(
-    "SELECT id, scenario, seed, started_at, config, report FROM sim_runs WHERE report IS NOT NULL ORDER BY started_at DESC LIMIT 60",
+    "SELECT id, scenario, seed, started_at, config, report FROM sim_runs WHERE report IS NOT NULL AND NOT archived ORDER BY started_at DESC LIMIT 200",
   );
   // Headline: latest run per scenario at the largest scale that scenario has been run at.
   const best = new Map<string, RunRow>();
@@ -90,6 +92,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <RunsTable rows={headline} />
       </div>
 
+      <h2>Across seeds (full scale)</h2>
+      <div className="card table-wrap">
+        <SeedStats rows={runs.filter((r) => (r.config.scale ?? 1) === 1)} />
+        <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
+          Each seed is an independent full run (fresh population, fresh draw secret). The range shows run-to-run noise: with 500 seats and ~2,500 bot accounts,
+          bots expect ~25 seats, so ±5 seats moves the multiplier by ±0.2.
+        </p>
+      </div>
+
       <h2>Live drops</h2>
       <div className="grid">
         {live.map((d, i) => (
@@ -118,6 +129,43 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   );
 }
 
+function stats(xs: number[]) {
+  if (!xs.length) return null;
+  return { mean: xs.reduce((a, b) => a + b, 0) / xs.length, min: Math.min(...xs), max: Math.max(...xs) };
+}
+
+function SeedStats({ rows }: { rows: RunRow[] }) {
+  const by = new Map<string, RunRow[]>();
+  for (const r of rows) by.set(r.scenario, [...(by.get(r.scenario) ?? []), r]);
+  const fmtR = (s: ReturnType<typeof stats>, f: (x: number) => string) => (s ? <>{f(s.mean)} <span className="muted">[{f(s.min)} – {f(s.max)}]</span></> : "–");
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th><th>Runs</th><th className="l">Seeds</th>
+          <th>Bot seat share: mean [min – max]</th><th>Advantage: mean [min – max]</th><th>Human P(win)</th><th>Max oversell</th>
+        </tr>
+      </thead>
+      <tbody>
+        {[...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sc, rs]) => {
+          const inf = rs.some((r) => r.report.summary.humansWonNothing);
+          return (
+            <tr key={sc}>
+              <td><b>{sc}</b></td>
+              <td>{rs.length}</td>
+              <td className="l">{[...new Set(rs.map((r) => r.seed))].sort().join(", ")}</td>
+              <td>{fmtR(stats(rs.map((r) => r.report.summary.botSeatShare ?? 0)), (x) => `${(x * 100).toFixed(1)}%`)}</td>
+              <td>{inf ? "∞ (humans won 0 in some runs)" : fmtR(stats(rs.map((r) => r.report.summary.advantageMultiplier).filter((x): x is number => x !== null)), (x) => `${x.toFixed(2)}×`)}</td>
+              <td>{fmtR(stats(rs.map((r) => r.report.summary.pWinHuman ?? r.report.summary.humanSuccessRate ?? 0)), (x) => `${(x * 100).toFixed(2)}%`)}</td>
+              <td>{Math.max(...rs.map((r) => r.report.summary.oversell))}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function Pair({ label, acct, seat }: { label: string; acct: number | null; seat: number | null }) {
   return (
     <>
@@ -142,7 +190,7 @@ function RunsTable({ rows, showTime }: { rows: RunRow[]; showTime?: boolean }) {
           <th>Bot acct share</th>
           <th>Bot seat share</th>
           <th>Advantage</th>
-          <th>Human success</th>
+          <th>Human P(win)</th>
           <th>Human false-flag</th>
           <th>Bot flag recall</th>
           <th>Blocked (429/503)</th>
@@ -167,7 +215,7 @@ function RunsTable({ rows, showTime }: { rows: RunRow[]; showTime?: boolean }) {
               <td>{pct(s.botAccountShare)}</td>
               <td>{pct(s.botSeatShare)}</td>
               <td><b>{mult(s)}</b></td>
-              <td>{pct(s.humanSuccessRate)}</td>
+              <td>{pct(s.pWinHuman ?? s.humanSuccessRate)}</td>
               <td>{pct(s.humanFalseFlagRate)}</td>
               <td>{pct(s.botFlagRecall)}</td>
               <td>{blocked(r.report).toLocaleString()}</td>

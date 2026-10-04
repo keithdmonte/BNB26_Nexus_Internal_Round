@@ -1,4 +1,6 @@
 import pg from "pg";
+
+try { process.loadEnvFile(); } catch { /* no .env: rely on the environment */ }
 import { createDrop } from "../src/lib/drops.ts";
 
 const url = process.env.DATABASE_URL ?? "postgres://localhost:5432/fairdrop";

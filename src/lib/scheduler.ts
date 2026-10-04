@@ -15,12 +15,23 @@ async function transition(id: string, from: string, to: string, timeCol: "opens_
   invalidateDrop(id);
 }
 
+const skipped = new Set<string>();
+
 export async function tick() {
   const { rows } = await pool().query(
-    `SELECT id, mode, status, opens_at <= now() AS should_open, closes_at <= now() AS should_close
+    `SELECT id, mode, status, opens_at <= now() AS should_open, closes_at <= now() AS should_close,
+            secret_enc IS NULL AS no_secret
      FROM drops WHERE status IN ('scheduled', 'open', 'closed', 'frozen')`,
   );
   for (const d of rows) {
+    if (d.mode === "lottery" && d.no_secret) {
+      // Can never be drawn (created before draw secrets existed). Skip it instead of failing every tick.
+      if (!skipped.has(d.id)) {
+        skipped.add(d.id);
+        console.warn(`[scheduler] skipping lottery drop ${d.id}: no draw secret`);
+      }
+      continue;
+    }
     try {
       if (d.status === "scheduled" && d.should_open) await transition(d.id, "scheduled", "open", "opens_at");
       else if (d.status === "open" && d.should_close)
