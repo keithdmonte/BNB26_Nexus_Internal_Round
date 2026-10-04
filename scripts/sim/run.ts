@@ -75,14 +75,14 @@ async function call(
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
 // ---------- population ----------
-interface Actor { type: ActorType; operatorId?: string; ip: string; fp: string; ageS: number; token?: string; userId?: string; rps?: number; durationS?: number; arrivalMs?: number; refresh?: boolean }
+interface Actor { type: ActorType; operatorId?: string; ip: string; fp: string; ageS: number; phone?: string; token?: string; userId?: string; rps?: number; durationS?: number; arrivalMs?: number; refresh?: boolean }
 
 function buildPopulation(s: Scenario): Actor[] {
   const actors: Actor[] = [];
   const humans = Math.round(s.humans * SCALE);
   const natIps = Array.from({ length: Math.max(1, Math.round(s.humanIpPool * SCALE)) }, (_, i) => `100.64.${(i >> 8) & 255}.${i & 255}`);
   for (let i = 0; i < humans; i++) {
-    actors.push({ type: "human", ip: pick(natIps), fp: `h-${SEED}-${i}`, ageS: 86400 * (30 + Math.floor(rng() * 365)) });
+    actors.push({ type: "human", ip: pick(natIps), fp: `h-${SEED}-${i}`, ageS: 86400 * (30 + Math.floor(rng() * 365)), phone: `+1555${String(i).padStart(7, "0")}` });
   }
   // Roommates: a few humans share a device with another human (false-positive bait for clustering).
   const shared = Math.floor(humans * s.humanSharedFp);
@@ -96,12 +96,15 @@ function buildPopulation(s: Scenario): Actor[] {
       const opId = `${b.type}-${o}`;
       const opFp = `op-${SEED}-${opIdx}`;
       const opIps = Array.from({ length: b.ipPool ?? 1 }, (_, i) => `203.0.${opIdx & 255}.${(i % 254) + 1}`);
+      // Each real number verifies one account, so an operator with P phones gets at most P phone-verified accounts.
+      const phones = b.phones === undefined ? each : Math.max(1, Math.round((b.phones * each) / b.accountsEach));
       for (let a = 0; a < each; a++) {
         const fp = b.type === "multi" && rng() < (b.sharedFp ?? 0) ? opFp : `${opFp}-${a}`;
         const ip = b.type === "multi" && (b.ipPool ?? 1) > 254
           ? `${11 + Math.floor(rng() * 200)}.${Math.floor(rng() * 255)}.${Math.floor(rng() * 255)}.${1 + Math.floor(rng() * 254)}`
           : pick(opIps);
-        actors.push({ type: b.type, operatorId: opId, ip, fp, ageS: b.ageS ?? 86400 * 60, rps: b.rps, durationS: b.durationS });
+        const phone = a < phones ? `+1556${String(opIdx).padStart(3, "0")}${String(a).padStart(5, "0")}` : undefined;
+        actors.push({ type: b.type, operatorId: opId, ip, fp, phone, ageS: b.ageS ?? 86400 * 60, rps: b.rps, durationS: b.durationS });
       }
     }
   }
@@ -198,7 +201,7 @@ async function main() {
   for (let i = 0; i < actors.length; i += 10_000) {
     const batch = actors.slice(i, i + 10_000);
     const r = await call("human", "setup", "POST", `/api/sim/runs/${runId}/accounts`, {
-      body: { accounts: batch.map((a) => ({ actorType: a.type, operatorId: a.operatorId, deviceFp: a.fp, signupIp: a.ip, ageS: a.ageS + leadS })) },
+      body: { accounts: batch.map((a) => ({ actorType: a.type, operatorId: a.operatorId, deviceFp: a.fp, signupIp: a.ip, ageS: a.ageS + leadS, phone: a.phone })) },
     });
     if (r.status !== 201) throw new Error(`accounts failed: ${r.code}`);
     r.body.accounts.forEach((x: { token: string; userId: string }, j: number) => {

@@ -12,6 +12,7 @@ export interface BotSpec {
   sharedFp?: number; // multi: probability an account reuses the operator's device fingerprint
   ipPool?: number; // multi: IPs per operator, all in one /24
   ageS?: number; // account age at drop open
+  phones?: number; // real phone numbers per operator (only that many accounts can verify); default: every account has one
 }
 
 export interface Scenario {
@@ -20,7 +21,7 @@ export interface Scenario {
   mode: "lottery" | "fcfs" | "fcfs_unsafe";
   inventory: number;
   windowS: number;
-  defenses: { rateLimit: boolean; risk: boolean; riskPolicy?: "collapse" | "exclude" };
+  defenses: { rateLimit: boolean; risk: boolean; riskPolicy?: "collapse" | "exclude"; requirePhone?: boolean };
   humans: number;
   humanIpPool: number; // campus NAT: humans share this many IPs
   humanSharedFp: number; // fraction of humans sharing a device with another human (roommates)
@@ -52,6 +53,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   S4c: { ...base, id: "S4c", title: "Evasive multi-account (distinct devices, aged), clustering ON", mode: "lottery", windowS: 60,
     defenses: { rateLimit: true, risk: true, riskPolicy: "collapse" }, humans: 48_000,
     bots: [{ type: "multi", operators: 2, accountsEach: 1000, sharedFp: 0, ipPool: 1000, ageS: 90 * 86400 }] },
+  S5: { ...base, id: "S5", title: "Evasive multi-account, phone verification required", mode: "lottery", windowS: 60,
+    defenses: { rateLimit: true, risk: true, riskPolicy: "collapse", requirePhone: true }, humans: 48_000,
+    bots: [{ type: "multi", operators: 2, accountsEach: 1000, sharedFp: 0, ipPool: 1000, ageS: 90 * 86400, phones: 25 }] },
   S6: { ...base, id: "S6", title: "FCFS-unsafe (race condition) under attack", mode: "fcfs_unsafe", windowS: 20,
     defenses: { rateLimit: false, risk: false }, humans: 10_000, bots: [{ type: "fast_bot", operators: 10, accountsEach: 200 }] },
 };

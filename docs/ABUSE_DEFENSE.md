@@ -52,6 +52,13 @@ Redis token bucket implemented as an atomic Lua script. Starting values, to tune
 - Only `verified_at IS NOT NULL` accounts can enter. Real mode: email OTP (provider TBD, OPEN_QUESTIONS). Optional stronger tiers: college email domain allowlist, phone OTP.
 - **Cost:** friction at signup. An allowlisted domain excludes legitimate outsiders.
 - **Does not stop:** an attacker who can mint many emails on an accepted domain, or buy verified accounts.
+- **Phone tier (implemented, per drop: `config.requirePhone`).** `POST /api/me/phone` sends a 6-digit code,
+  `POST /api/me/phone/verify` confirms it. One account per number (unique index), and a number is locked to its
+  account once verified, so it cannot be moved to a second account mid-drop. Codes are HMAC-hashed, expire after
+  10 minutes and allow 5 attempts. Sends are rate-limited per user, number and IP (SMS-pumping fraud).
+  `PHONE_BLOCK_VIRTUAL=true` rejects VoIP numbers via Twilio Lookup. The entry INSERT checks the phone in the same
+  statement and returns `403 PHONE_REQUIRED` otherwise. Effect: K accounts now cost K real SIMs, not K emails.
+  Sim scenario S5 = S4c (evasive operators) where each operator owns only 25 numbers.
 
 ### D6. Pre-draw risk scoring and clustering (against T4, T5)
 Runs at freeze over all entries. It reads only request/account metadata, **never `sim_labels`**.

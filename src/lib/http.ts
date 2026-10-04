@@ -62,10 +62,15 @@ export function clientIp(req: Request): string {
   return xff ? xff.split(",")[0].trim() : "127.0.0.1";
 }
 
-export function requireWriteHeaders(req: Request): string {
+/** CSRF guard: a cross-site form cannot set custom headers. */
+export function requireXrw(req: Request) {
   if (req.headers.get("x-requested-with") !== "fairdrop") {
     throw new ApiError(403, "FORBIDDEN", "missing X-Requested-With");
   }
+}
+
+export function requireWriteHeaders(req: Request): string {
+  requireXrw(req);
   const key = req.headers.get("idempotency-key");
   if (!key || key.length > 100) throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED");
   return key;

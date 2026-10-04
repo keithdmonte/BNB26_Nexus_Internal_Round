@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-interface DropInfo { id: string; name: string; mode: string; status: string; inventory: number; opensAt: string; closesAt: string; commit: string | null; entrantCount: number; serverTime: string }
+interface DropInfo { id: string; name: string; mode: string; status: string; inventory: number; opensAt: string; closesAt: string; commit: string | null; entrantCount: number; requirePhone?: boolean; serverTime: string }
 interface MeState { state: string; dropStatus: string; entry: { publicId: string } | null; allocation: { seatNo: number } | null; rank: number | null }
 
 const PENDING = "fairdrop.pending"; // { dropId, key } survives refresh so a retry reuses the same Idempotency-Key
@@ -25,8 +25,12 @@ const STATE_TEXT: Record<string, string> = {
 };
 
 export default function Home() {
-  const [user, setUser] = useState<{ email: string } | null | undefined>(undefined);
+  const [user, setUser] = useState<{ email: string; phoneVerified?: boolean } | null | undefined>(undefined);
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [devCode, setDevCode] = useState("");
   const [drops, setDrops] = useState<{ id: string; name: string; status: string }[]>([]);
   const [dropId, setDropId] = useState<string | null>(null);
   const [drop, setDrop] = useState<DropInfo | null>(null);
@@ -104,11 +108,31 @@ export default function Home() {
     else setError(j.error?.message ?? "login failed");
   };
 
+  const post = (url: string, body: unknown) =>
+    fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-requested-with": "fairdrop" }, body: JSON.stringify(body) })
+      .then(async (r) => ({ ok: r.ok, j: await r.json() }));
+
+  const sendCode = async () => {
+    setError("");
+    const { ok, j } = await post("/api/me/phone", { phone });
+    if (!ok) return setError(j.error?.message ?? j.error?.code);
+    setCodeSent(true);
+    setDevCode(j.devCode ?? "");
+  };
+
+  const confirmCode = async () => {
+    setError("");
+    const { ok, j } = await post("/api/me/phone/verify", { code });
+    if (!ok) return setError(j.error?.message ?? j.error?.code);
+    setUser((u) => (u ? { ...u, phoneVerified: true } : u));
+  };
+
   const serverNow = now + skew.current;
   const opens = drop ? new Date(drop.opensAt).getTime() : 0;
   const closes = drop ? new Date(drop.closesAt).getTime() : 0;
   const countdown = (ms: number) => `${Math.max(0, Math.floor(ms / 60000))}:${String(Math.max(0, Math.floor(ms / 1000) % 60)).padStart(2, "0")}`;
-  const canAct = drop && user && drop.status === "open" && me && ["not_entered", "not_purchased"].includes(me.state);
+  const needsPhone = !!(drop?.requirePhone && user && !user.phoneVerified && ["scheduled", "open"].includes(drop.status));
+  const canAct = drop && user && !needsPhone && drop.status === "open" && me && ["not_entered", "not_purchased"].includes(me.state);
 
   const STAGES = ["scheduled", "open", "draw", "result"];
   const stage = !drop ? -1 : drop.status === "scheduled" ? 0 : drop.status === "open" ? 1 : ["closed", "frozen"].includes(drop.status) ? 2 : 3;
@@ -188,6 +212,26 @@ export default function Home() {
             </div>
           )}
           {!user && user !== undefined && <div className="result"><div className="t">Sign in to enter</div></div>}
+
+          {needsPhone && (
+            <div className="panel" style={{ marginTop: 12 }}>
+              <div className="eyebrow">Verify your phone to enter</div>
+              <div className="muted" style={{ fontSize: 12, margin: "6px 0 10px" }}>One number per account. This stops one person entering many times.</div>
+              {!codeSent ? (
+                <div className="signin">
+                  <input placeholder="+14155550123" value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendCode()} aria-label="phone number" inputMode="tel" autoComplete="tel" />
+                  <button className="primary" onClick={sendCode}>Send code</button>
+                </div>
+              ) : (
+                <div className="signin">
+                  <input placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmCode()} aria-label="verification code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+                  <button className="primary" onClick={confirmCode}>Verify</button>
+                </div>
+              )}
+              {codeSent && <button className="muted" style={{ fontSize: 12, marginTop: 8, background: "none", border: 0, padding: 0, cursor: "pointer" }} onClick={() => { setCodeSent(false); setCode(""); setDevCode(""); }}>Use a different number</button>}
+              {devCode && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Demo mode, no SMS sent. Your code: <code>{devCode}</code></div>}
+            </div>
+          )}
 
           {canAct && (
             <button className="primary big-btn" disabled={busy} onClick={() => write(drop.id, drop.mode, crypto.randomUUID())}>

@@ -13,7 +13,7 @@ export const GET = route<{ params: Promise<{ id: string }> }>(async (_req, { par
     (await pool().query("SELECT count(*)::int n FROM entries WHERE drop_id = $1", [d.id])).rows[0].n as number);
   return json({
     id: d.id, name: d.name, mode: d.mode, status: d.status, inventory: d.inventory,
-    opensAt: d.opensAt, closesAt: d.closesAt, commit: d.commit,
+    opensAt: d.opensAt, closesAt: d.closesAt, commit: d.commit, requirePhone: d.config.requirePhone === true,
     entrantCount,
   });
 });

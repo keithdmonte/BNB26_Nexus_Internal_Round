@@ -12,7 +12,7 @@ function isFrozenError(e: unknown) {
 }
 
 /**
- * One entry per account. Entry time is recorded for metrics only and has no effect on the outcome.
+ * One entry per account (and, when the drop sets requirePhone, per verified phone). Entry time is recorded for metrics only and has no effect on the outcome.
  * Single autocommit INSERT: the unique (drop_id, user_id) index makes it idempotent, and the stored
  * request_id distinguishes a same-key replay (original 201) from a second attempt (200 alreadyEntered).
  */
@@ -30,11 +30,13 @@ export async function enter(
   const p = pool();
   const body = (createdAt: Date) => ({ entry: { publicId: pid, createdAt }, state: "entered" });
   try {
+    // The phone check rides on the same INSERT, so the happy path stays one round trip.
     const ins = await p.query(
       `INSERT INTO entries (drop_id, user_id, public_id, ip, device_fp, request_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       SELECT $1::uuid, $2::uuid, $3::text, $4::inet, $5::text, $6::text
+       WHERE NOT $7::boolean OR EXISTS (SELECT 1 FROM users WHERE id = $2::uuid AND phone_verified_at IS NOT NULL)
        ON CONFLICT (drop_id, user_id) DO NOTHING RETURNING created_at`,
-      [drop.id, userId, pid, meta.ip, meta.deviceFp, key],
+      [drop.id, userId, pid, meta.ip, meta.deviceFp, key, drop.config.requirePhone === true],
     );
     if (ins.rows[0]) {
       inc(drop.id, "entries");
@@ -48,6 +50,10 @@ export async function enter(
     throw e;
   }
   const ex = await p.query("SELECT created_at, request_id FROM entries WHERE drop_id = $1 AND user_id = $2", [drop.id, userId]);
+  if (!ex.rows[0]) {
+    inc(drop.id, "phone_required");
+    throw new ApiError(403, "PHONE_REQUIRED", "verify a phone number to enter this drop");
+  }
   inc(drop.id, "duplicate_absorbed");
   if (ex.rows[0].request_id === key) return { status: 201, body: body(ex.rows[0].created_at), replayed: true };
   return { status: 200, body: { ...body(ex.rows[0].created_at), alreadyEntered: true }, replayed: false };

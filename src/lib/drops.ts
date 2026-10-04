@@ -36,6 +36,7 @@ export interface DropConfig {
   rateLimit?: boolean; // default true
   risk?: boolean; // pre-draw clustering, default false
   riskPolicy?: "collapse" | "exclude";
+  requirePhone?: boolean; // entries need a verified phone number, default false
 }
 
 export interface Drop {
