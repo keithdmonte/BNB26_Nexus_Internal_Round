@@ -2,9 +2,10 @@ import type pg from "pg";
 import { pool, tx } from "@/lib/db";
 import { computeSeed, entriesHash, publicId, rankEntries, RANK_FN_VERSION } from "@/lib/draw-core";
 import { invalidateDrop, type Drop } from "@/lib/drops";
-import { ApiError } from "@/lib/http";
+import { ApiError, inetOrNull } from "@/lib/http";
 import { scoreEntries } from "@/lib/risk";
 import { decryptSecret } from "@/lib/secret";
+import { beaconEnabled, beaconTimeoutMs, fetchVerifiedBeacon, QUICKNET, roundAt, roundTime } from "@/lib/beacon";
 import { inc } from "@/lib/counters";
 
 function isFrozenError(e: unknown) {
@@ -34,7 +35,7 @@ export async function enter(
       `INSERT INTO entries (drop_id, user_id, public_id, ip, device_fp, request_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (drop_id, user_id) DO NOTHING RETURNING created_at`,
-      [drop.id, userId, pid, meta.ip, meta.deviceFp, key],
+      [drop.id, userId, pid, inetOrNull(meta.ip), meta.deviceFp, key],
     );
     if (ins.rows[0]) {
       inc(drop.id, "entries");
@@ -88,10 +89,13 @@ export async function freeze(dropId: string): Promise<boolean> {
     }
     const { rows: elig } = await c.query("SELECT public_id FROM entries WHERE drop_id = $1 AND status = 'active'", [dropId]);
     const { rows: tot } = await c.query("SELECT count(*)::int n FROM entries WHERE drop_id = $1", [dropId]);
+    // Commit to a drand round that is published only AFTER the entry set is fixed (2 periods ahead).
+    const beaconRound = beaconEnabled() ? roundAt(Date.now()) + 2 : null;
     await c.query(
-      `UPDATE drops SET status = 'frozen', entries_hash = $2, eligible_count = $3, excluded_count = $4, frozen_at = now()
+      `UPDATE drops SET status = 'frozen', entries_hash = $2, eligible_count = $3, excluded_count = $4, frozen_at = now(),
+                        beacon_round = $5, beacon_status = $6
        WHERE id = $1`,
-      [dropId, entriesHash(elig.map((r) => r.public_id)), elig.length, tot[0].n - elig.length],
+      [dropId, entriesHash(elig.map((r) => r.public_id)), elig.length, tot[0].n - elig.length, beaconRound, beaconRound ? "pending" : "disabled"],
     );
     return true;
   });
@@ -99,11 +103,48 @@ export async function freeze(dropId: string): Promise<boolean> {
   return done;
 }
 
+type ResolvedBeacon = { status: "drand" | "fallback" | "disabled"; value: string; signature: string | null };
+
 /**
- * The draw: one transaction. Deterministic in (secret, frozen entries), so a crash simply means
- * "run it again" and yields the identical result. `crashAfterRanks` is a test hook for that claim.
+ * Resolves the committed drand round for a frozen drop. Returns null while the draw must wait
+ * (round not yet published, or drand unreachable and the retry window has not expired).
+ * Never silently uses an empty beacon: fallback and disabled are recorded as such.
  */
-export async function draw(dropId: string, opts: { crashAfterRanks?: boolean } = {}): Promise<boolean> {
+async function resolveBeacon(dropId: string, timeoutMs: number): Promise<ResolvedBeacon | null> {
+  const p = pool();
+  const { rows } = await p.query(
+    "SELECT status, beacon_round, beacon_status, beacon_first_try_at FROM drops WHERE id = $1",
+    [dropId],
+  );
+  const d = rows[0];
+  if (!d || d.status !== "frozen") return null;
+  if (d.beacon_status === "disabled" || d.beacon_round == null) return { status: "disabled", value: "", signature: null };
+  const round = Number(d.beacon_round);
+  if (Date.now() < roundTime(round)) return null; // committed round not published yet
+  try {
+    const b = await fetchVerifiedBeacon(round);
+    return { status: "drand", value: b.randomness, signature: b.signature };
+  } catch (e) {
+    const first = d.beacon_first_try_at
+      ? new Date(d.beacon_first_try_at).getTime()
+      : (await p.query("UPDATE drops SET beacon_first_try_at = coalesce(beacon_first_try_at, now()) WHERE id = $1 RETURNING beacon_first_try_at", [dropId])).rows[0].beacon_first_try_at.getTime();
+    if (Date.now() - first >= timeoutMs) {
+      console.warn(`[draw] drop ${dropId}: drand round ${round} unavailable after ${timeoutMs}ms (${(e as Error).message}); falling back to commit-reveal only`);
+      return { status: "fallback", value: "", signature: null };
+    }
+    if (!d.beacon_first_try_at) console.warn(`[draw] drop ${dropId}: drand round ${round} not available (${(e as Error).message}); retrying for up to ${timeoutMs}ms`);
+    return null;
+  }
+}
+
+/**
+ * The draw: one transaction. Deterministic in (secret, frozen entries, committed drand round), so a crash
+ * simply means "run it again" and yields the identical result. `crashAfterRanks` is a test hook for that claim.
+ * Returns false when there is nothing to do yet (not frozen, or still waiting for the beacon).
+ */
+export async function draw(dropId: string, opts: { crashAfterRanks?: boolean; beaconTimeoutMs?: number } = {}): Promise<boolean> {
+  const beacon = await resolveBeacon(dropId, opts.beaconTimeoutMs ?? beaconTimeoutMs());
+  if (!beacon) return false;
   const done = await tx(async (c) => {
     if (!(await lockDrop(c, dropId, "frozen"))) return false;
     const { rows: d } = await c.query("SELECT inventory, secret_enc, entries_hash FROM drops WHERE id = $1", [dropId]);
@@ -114,7 +155,7 @@ export async function draw(dropId: string, opts: { crashAfterRanks?: boolean } =
     );
     const pids = entries.map((e) => e.public_id);
     if (entriesHash(pids) !== d[0].entries_hash) throw new Error("eligible set changed after freeze");
-    const seed = computeSeed(secretHex, d[0].entries_hash);
+    const seed = computeSeed(secretHex, d[0].entries_hash, beacon.value);
     const byPid = new Map(entries.map((e) => [e.public_id, e]));
     const ranked = rankEntries(seed, pids);
     await c.query(
@@ -133,9 +174,10 @@ export async function draw(dropId: string, opts: { crashAfterRanks?: boolean } =
       [dropId, winners.map((w) => w.id), winners.map((w) => w.user_id), winners.length],
     );
     await c.query(
-      `UPDATE drops SET status = 'drawn', seed = $2, beacon_value = '', secret_revealed = $3, drawn_at = now(), rank_fn_version = $4
+      `UPDATE drops SET status = 'drawn', seed = $2, beacon_value = $5, beacon_signature = $6, beacon_status = $7,
+                        secret_revealed = $3, drawn_at = now(), rank_fn_version = $4
        WHERE id = $1`,
-      [dropId, seed, Buffer.from(secretHex, "hex"), RANK_FN_VERSION],
+      [dropId, seed, Buffer.from(secretHex, "hex"), RANK_FN_VERSION, beacon.value, beacon.signature, beacon.status],
     );
     return true;
   });
@@ -147,13 +189,22 @@ export async function audit(dropId: string) {
   const p = pool();
   const { rows } = await p.query(
     `SELECT id, inventory, status, commit, encode(secret_revealed, 'hex') AS secret, encode(public_salt, 'hex') AS salt,
-            entries_hash, eligible_count, excluded_count, seed, beacon_value, rank_fn_version, frozen_at, drawn_at
+            entries_hash, eligible_count, excluded_count, seed, beacon_value, beacon_round, beacon_status, beacon_signature,
+            rank_fn_version, frozen_at, drawn_at
      FROM drops WHERE id = $1`,
     [dropId],
   );
   const d = rows[0];
   if (!d) return null;
-  const base = { dropId: d.id, rankFnVersion: d.rank_fn_version, inventory: d.inventory, status: d.status, commit: d.commit };
+  const beacon = {
+    source: d.beacon_status === "drand" || d.beacon_status === "pending" ? "drand-quicknet" : "none",
+    status: d.beacon_status ?? "none",
+    chainHash: QUICKNET.chainHash,
+    round: d.beacon_round == null ? null : Number(d.beacon_round),
+    value: d.beacon_value ?? "",
+    signature: d.beacon_signature ?? null,
+  };
+  const base = { dropId: d.id, rankFnVersion: d.rank_fn_version, inventory: d.inventory, status: d.status, commit: d.commit, beacon };
   if (!["drawn", "claim", "done"].includes(d.status)) return base;
   const [elig, excl, win] = await Promise.all([
     p.query("SELECT public_id FROM entries WHERE drop_id = $1 AND status = 'active' ORDER BY public_id", [dropId]),
@@ -170,7 +221,6 @@ export async function audit(dropId: string) {
     entriesHash: d.entries_hash,
     eligibleCount: d.eligible_count,
     excluded: { count: d.excluded_count, byReason: excl.rows.map((r) => ({ status: r.status, reason: r.exclusion_reason, n: r.n })) },
-    beacon: { source: "none", value: d.beacon_value ?? "" },
     seed: d.seed,
     frozenAt: d.frozen_at,
     drawnAt: d.drawn_at,

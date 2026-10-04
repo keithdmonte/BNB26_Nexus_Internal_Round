@@ -1,59 +1,50 @@
-# Metrics
-
-> **Deadline build:** BUILD_PLAN.md "Lean MVP" overrides this doc where they differ (single Next.js service + Postgres, no Redis, signed-cookie sessions, poll instead of SSE, auto-confirm, no drand). This doc describes the target design.
+# Metrics (as built)
 
 Sources:
-- **[S]** Server: Redis counters, PG events, snapshotted every 5s into `metric_snapshots`.
-- **[C]** Client: simulator request logs.
-- **[L]** Labels: `sim_labels`, joined **only** in the report and metrics layer.
+- **[S]** Server: Postgres ledger, plus in-memory counters in `src/lib/counters.ts` (reset on restart).
+- **[C]** Client: simulator request logs, so latency is client-observed on the same machine.
+- **[L]** Labels: `sim_labels`, joined **only** in `src/lib/report.ts` (`fairnessReport`).
+
+Every simulator run writes `runs/<scenario>-seed<seed>-scale<scale>-<time>.json` and stores the same report in `sim_runs.report`.
 
 ## Fairness
 | Metric | Definition | Source | Dashboard |
 |---|---|---|---|
-| Bot seat share | seats held (confirmed or offered at end) by bot-labelled accounts / inventory | S+L | Big number + stacked bar (human vs each bot type) |
-| Bot account share | bot accounts that entered (or attempted to buy) / all accounts that did | S+L | Shown beside the seat share |
-| **Advantage multiplier** | P(win \| bot account) / P(win \| human account). 1.0 = no advantage per account. FCFS P(win) = bought / attempted accounts | S+L | Headline number per run, coloured green ≤ 1.2, amber ≤ 2, red > 2 |
-| Per-operator seats | seats won per operator_id, compared with the expected fair share (`accounts × inventory/eligible`) | S+L | Table, top 10 operators |
-| Human success rate | humans with a seat / humans who tried | S+L | Number |
-| Human false-exclusion rate | humans with an `excluded`/`collapsed` entry, or blocked on every attempt / humans who tried | S+L | Number, red if > 1% |
-| Bot exclusion recall | bot accounts excluded or collapsed / bot accounts entered | S+L | Number |
-| Draw uniformity (lottery) | Chi-square of win counts across human arrival-time deciles. Expect p > 0.05 (arrival time doesn't matter) | S+L | Bar chart: win rate by arrival decile |
+| Bot account share | bot-labelled accounts / all participating accounts | L | Chart and tables |
+| Bot seat share | seats held by bot accounts / seats allocated | S+L | Chart and tables |
+| P(win), human / bot | accounts holding a seat / accounts in group | S+L | "Human P(win)" column |
+| **Advantage multiplier** | P(win \| bot account) / P(win \| human account). 1.0 = no per-account advantage. Shown as ∞ when humans win nothing | S+L | Headline column, across-seeds mean [min–max] |
+| Per-operator seats | seats per `operator_id` against its fair share (`accounts × seats / total accounts`) | S+L | In the report JSON (`operators`) |
+| Human false-flag rate | humans whose entry was collapsed or excluded / humans who entered | S+L | Column |
+| Bot flag recall | bot entries collapsed or excluded / bot entries | S+L | Column |
+| P(win) by arrival decile | Accounts sorted by first-request time into 10 equal groups; P(win) per group (`arrivalDeciles` humans only, `arrivalDecilesAll` humans + bots) | C+S+L | Arrival-decile chart (FCFS vs lottery) |
 
 ## Abuse handling
 | Metric | Definition | Source | Dashboard |
 |---|---|---|---|
-| Requests blocked, by reason | counts of 429 user / 429 ip / 503 global / 403 challenge / 409 duplicate or in-progress | S | Stacked area over time |
-| Block share by actor | share of blocked requests sent by bots vs humans | S+C+L | Two bars. Humans should be ≈ 0 |
-| Duplicate writes absorbed | idempotent replays + `already_entered` | S | Number |
-| Clusters found | number and size distribution | S | Histogram |
+| Blocked requests | 429 + 503 responses to write requests | C | "Blocked" column |
+| Codes by actor and endpoint | full status-code histogram per actor type | C | Report JSON (`client.endpoints`) |
+| Live 429 counter | server-side, per drop | S (memory) | Live drop cards (resets on restart) |
+| Duplicates absorbed | already-entered / already-purchased responses | S (memory) | Report JSON (`serverCounters`) |
 
 ## Performance and reliability
 | Metric | Definition | Source | Dashboard |
 |---|---|---|---|
-| Throughput | requests/s handled (2xx + 4xx), per endpoint | S | Line over time |
-| Latency p50 / p95 / p99 | client-observed, per endpoint, **humans only** and all | C | Line plus a per-run table |
-| Error rate | 5xx + timeouts / total | C | Line; per run |
-| Human-perceived failure | humans who never got a successful entry/purchase response for a non-business reason (5xx, timeout, retries exhausted) | C+L | Number |
-| SSE delivery | time from `draw_committed` until a human client sees its result (p50/p95) | C | Number |
+| Latency p50 / p95 / p99 | client-observed, per actor type and endpoint | C | "Human p95" column; full detail in JSON |
+| Per-request error rate | (5xx + network errors) / requests | C | "Err" column |
+| Humans without an answer | humans whose final response was not 2xx / 410 / window-closed after all retries | C | Report JSON (`client.humanUnresolvedRate`) |
+| Simulator validity | simulator event-loop delay p95 < 50ms, else latency figures are flagged unreliable | C | Printed by the simulator |
 
-## Integrity (must be 0 or "true"; shown red otherwise)
-| Metric | Definition | Source |
-|---|---|---|
-| Oversell count | `max(0, active allocations − inventory)` per drop (unsafe mode: from `allocations_unsafe`) | S |
-| Duplicate allocations | users with more than one active allocation in a drop | S |
-| Seat double-booking | seats with more than one active allocation (should be impossible by index; checked anyway) | S |
-| Inventory consistency | `active + free == inventory` and, for FCFS, Redis `remaining == free seats` when idle | S |
-| Lost writes | simulator successes (2xx) without a matching PG row | C+S |
-| Draw verified | `verify` script output: pass/fail | audit |
+## Integrity (must be 0 / true)
+| Metric | Definition |
+|---|---|
+| Oversell | `max(0, active allocations − inventory)` (unsafe mode reads `allocations_unsafe`) |
+| Duplicate users | users with more than one active allocation in a drop |
+| Double-booked seats | seats with more than one active allocation |
+| Inventory consistent | safe ledger: active allocations = held seats ≤ inventory |
+| Draw verified | `npm run verify` against the audit, including the independent drand fetch |
 
-Integrity is checked every 5s during a run and once at the end. The dashboard shows a green/red strip.
+Computed by `checkIntegrity()` at the end of every run and on each dashboard refresh (live drop cards).
 
-## Dashboard layout (`/admin/dashboard`)
-1. **Run picker**: live drop, or saved runs (multi-select for comparison).
-2. **Headline row**: advantage multiplier, bot seat share vs account share, human success rate, oversell, duplicates, draw verified.
-3. **Comparison table**: one row per selected run (S2 vs S3 vs S4a vs S4b), with columns for the headline metrics plus p95 and error rate. **This is the main judging artifact.**
-4. **Live charts**: throughput, blocked requests by reason, latency percentiles.
-5. **Fairness detail**: win rate by arrival decile, per-operator table, cluster histogram.
-6. **Export**: the run JSON and the audit link.
-
-The dashboard polls `/api/admin/drops/:id/metrics` every 2s. Charts use a lightweight library such as Recharts.
+## Not built
+Server-side latency histograms, time-series charts, the `metric_snapshots`/`events` pipeline, and a chi-square uniformity statistic (uniformity is covered by a test and the arrival-decile chart).

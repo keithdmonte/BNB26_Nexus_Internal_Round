@@ -5,7 +5,7 @@ import { ApiError, json, requireAdmin, route } from "@/lib/http";
 export const dynamic = "force-dynamic";
 
 export const POST = route(async (req) => {
-  requireAdmin(req);
+  await requireAdmin(req);
   const b = (await req.json().catch(() => ({}))) as {
     name?: string; mode?: DropMode; inventory?: number; opensInS?: number; windowS?: number; config?: Record<string, unknown>;
   };

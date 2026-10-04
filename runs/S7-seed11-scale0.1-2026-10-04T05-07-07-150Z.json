@@ -1,0 +1,313 @@
+{
+  "runId": "d81322fc-57c2-407d-ab98-a8589adc96aa",
+  "scenario": "S7",
+  "seed": 11,
+  "mode": "lottery",
+  "defenses": {
+    "risk": false,
+    "rateLimit": true
+  },
+  "dropId": "eeb24a15-a6a6-476a-9739-0720a9d93271",
+  "dropStatus": "drawn",
+  "inventory": 50,
+  "seatsAllocated": 50,
+  "summary": {
+    "botAccountShare": 0.05,
+    "botSeatShare": 0,
+    "humanSeatShare": 1,
+    "pWinHuman": 0.010526315789473684,
+    "pWinBot": 0,
+    "advantageMultiplier": 0,
+    "humansWonNothing": false,
+    "humanFalseFlagRate": 0,
+    "botFlagRecall": 0,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 4750,
+      "entered": 4750,
+      "flagged": 0,
+      "winners": 50,
+      "seats": 50
+    },
+    "retrier": {
+      "accounts": 250,
+      "entered": 250,
+      "flagged": 0,
+      "winners": 0,
+      "seats": 0
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "retrier-3",
+      "type": "retrier",
+      "accounts": 50,
+      "seats": 0,
+      "fairShare": 0.5
+    },
+    {
+      "operatorId": "retrier-2",
+      "type": "retrier",
+      "accounts": 50,
+      "seats": 0,
+      "fairShare": 0.5
+    },
+    {
+      "operatorId": "retrier-4",
+      "type": "retrier",
+      "accounts": 50,
+      "seats": 0,
+      "fairShare": 0.5
+    },
+    {
+      "operatorId": "retrier-1",
+      "type": "retrier",
+      "accounts": 50,
+      "seats": 0,
+      "fairShare": 0.5
+    },
+    {
+      "operatorId": "retrier-0",
+      "type": "retrier",
+      "accounts": 50,
+      "seats": 0,
+      "fairShare": 0.5
+    }
+  ],
+  "integrity": {
+    "inventory": 50,
+    "activeAllocations": 50,
+    "heldSeats": 50,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "arrivalDeciles": [
+    {
+      "decile": 1,
+      "fromMs": 2,
+      "toMs": 1597,
+      "n": 475,
+      "winners": 3,
+      "pWin": 0.00631578947368421
+    },
+    {
+      "decile": 2,
+      "fromMs": 1598,
+      "toMs": 3133,
+      "n": 475,
+      "winners": 10,
+      "pWin": 0.021052631578947368
+    },
+    {
+      "decile": 3,
+      "fromMs": 3134,
+      "toMs": 4673,
+      "n": 475,
+      "winners": 2,
+      "pWin": 0.004210526315789474
+    },
+    {
+      "decile": 4,
+      "fromMs": 4675,
+      "toMs": 7435,
+      "n": 475,
+      "winners": 8,
+      "pWin": 0.016842105263157894
+    },
+    {
+      "decile": 5,
+      "fromMs": 7437,
+      "toMs": 14948,
+      "n": 475,
+      "winners": 5,
+      "pWin": 0.010526315789473684
+    },
+    {
+      "decile": 6,
+      "fromMs": 14973,
+      "toMs": 23064,
+      "n": 475,
+      "winners": 5,
+      "pWin": 0.010526315789473684
+    },
+    {
+      "decile": 7,
+      "fromMs": 23108,
+      "toMs": 30476,
+      "n": 475,
+      "winners": 2,
+      "pWin": 0.004210526315789474
+    },
+    {
+      "decile": 8,
+      "fromMs": 30489,
+      "toMs": 38326,
+      "n": 475,
+      "winners": 4,
+      "pWin": 0.008421052631578947
+    },
+    {
+      "decile": 9,
+      "fromMs": 38333,
+      "toMs": 46337,
+      "n": 475,
+      "winners": 5,
+      "pWin": 0.010526315789473684
+    },
+    {
+      "decile": 10,
+      "fromMs": 46368,
+      "toMs": 53995,
+      "n": 475,
+      "winners": 6,
+      "pWin": 0.01263157894736842
+    }
+  ],
+  "arrivalDecilesAll": [
+    {
+      "decile": 1,
+      "fromMs": 2,
+      "toMs": 850,
+      "n": 500,
+      "winners": 3,
+      "pWin": 0.006
+    },
+    {
+      "decile": 2,
+      "fromMs": 850,
+      "toMs": 2475,
+      "n": 500,
+      "winners": 6,
+      "pWin": 0.012
+    },
+    {
+      "decile": 3,
+      "fromMs": 2479,
+      "toMs": 4118,
+      "n": 500,
+      "winners": 5,
+      "pWin": 0.01
+    },
+    {
+      "decile": 4,
+      "fromMs": 4122,
+      "toMs": 5753,
+      "n": 500,
+      "winners": 6,
+      "pWin": 0.012
+    },
+    {
+      "decile": 5,
+      "fromMs": 5757,
+      "toMs": 13190,
+      "n": 500,
+      "winners": 7,
+      "pWin": 0.014
+    },
+    {
+      "decile": 6,
+      "fromMs": 13195,
+      "toMs": 21241,
+      "n": 500,
+      "winners": 4,
+      "pWin": 0.008
+    },
+    {
+      "decile": 7,
+      "fromMs": 21254,
+      "toMs": 29501,
+      "n": 500,
+      "winners": 4,
+      "pWin": 0.008
+    },
+    {
+      "decile": 8,
+      "fromMs": 29513,
+      "toMs": 37466,
+      "n": 500,
+      "winners": 4,
+      "pWin": 0.008
+    },
+    {
+      "decile": 9,
+      "fromMs": 37499,
+      "toMs": 46003,
+      "n": 500,
+      "winners": 5,
+      "pWin": 0.01
+    },
+    {
+      "decile": 10,
+      "fromMs": 46013,
+      "toMs": 53995,
+      "n": 500,
+      "winners": 6,
+      "pWin": 0.012
+    }
+  ],
+  "serverCounters": {
+    "req_entry": 54752,
+    "entries": 5000,
+    "duplicate_absorbed": 3767,
+    "rate_limited_user": 43030,
+    "rate_limited_ip": 2942
+  },
+  "client": {
+    "activeSeconds": 59.563,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 11,
+    "simValid": true,
+    "endpoints": {
+      "retrier|write": {
+        "requests": 50000,
+        "p50": 6.5,
+        "p95": 22.6,
+        "p99": 38.9,
+        "codes": {
+          "201": 4017,
+          "409:WINDOW_NOT_OPEN": 11,
+          "429:RATE_LIMITED": 45972
+        },
+        "errorRate": 0
+      },
+      "human|write": {
+        "requests": 4752,
+        "p50": 3.8,
+        "p95": 26.4,
+        "p99": 40.6,
+        "codes": {
+          "201": 4750,
+          "409:WINDOW_NOT_OPEN": 2
+        },
+        "errorRate": 0
+      },
+      "human|me": {
+        "requests": 977,
+        "p50": 5.3,
+        "p95": 27.7,
+        "p99": 51.3,
+        "codes": {
+          "200": 977
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 1961,
+        "p50": 439.2,
+        "p95": 623.6,
+        "p99": 633.7,
+        "codes": {
+          "200": 1961
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

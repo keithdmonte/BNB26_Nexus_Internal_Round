@@ -11,13 +11,13 @@ export function AutoRefresh({ ms }: { ms: number }) {
   return null;
 }
 
-export function DemoControls({ token, drops }: { token: string; drops: { id: string; name: string; status: string }[] }) {
+export function DemoControls({ drops }: { drops: { id: string; name: string; status: string }[] }) {
   const [mode, setMode] = useState("lottery");
   const [inventory, setInventory] = useState(5);
   const [windowS, setWindowS] = useState(120);
   const [msg, setMsg] = useState("");
   const admin = async (path: string, body?: unknown) => {
-    const r = await fetch(path, { method: "POST", headers: { "x-admin-token": token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({}));
     setMsg(r.ok ? `ok ${j.id ?? ""}` : `error ${j.error?.code ?? r.status}`);
   };

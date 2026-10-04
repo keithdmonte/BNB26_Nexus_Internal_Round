@@ -1,142 +1,93 @@
-# Architecture
-
-> **Deadline build:** BUILD_PLAN.md "Lean MVP" overrides this doc where they differ (single Next.js service + Postgres, no Redis, signed-cookie sessions, poll instead of SSE, auto-confirm, no drand). This doc describes the target design.
-
-## Stack verdict
-| Choice | Verdict | Reasoning |
-|---|---|---|
-| Next.js + TypeScript (UI + API route handlers) | **Keep**, but run as a long-lived Node server (`next start`) on Railway, not serverless | Route handlers are thin, and the bottleneck is Redis/Postgres round trips, not the framework. A long-lived process keeps PG/Redis connection pools and supports SSE. Serverless (for example Vercel) would break pooling and long-lived SSE. |
-| Separate `worker` Node process (same repo, different start command) | **Add** | The draw, claim expiry, waitlist promotion, and metric rollups must not depend on an HTTP request staying alive, and must run exactly once. One worker with a PG advisory lock is simpler than coordinating this across app replicas. |
-| Redis | **Keep** for rate limits, idempotency cache, sessions, the FCFS gate, hot status cache, and counters | **Not the source of truth.** Losing Redis must never lose an entry or allocation. |
-| Postgres | **Keep** as the ledger for users, entries, seats, allocations, draw audit, and events | Unique constraints and row locks give correctness guarantees that Redis alone cannot (durability plus constraints). |
-| k6 | **Secondary.** Use only for a raw throughput or flood test | Scenarios need labelled actors (human/bot/operator), multi-account behaviour, and outcome collection joined with server data. A Node simulator (`undici`, keep-alive) is simpler for this. |
-| Node simulator | **Primary** load and bot tool | Runs from a Railway service in the same region (the private network avoids laptop and Wi-Fi limits), and locally for development. |
-| Railway | **Keep**, with conditions | Plan limits (replicas, CPU, PG connections, egress) are unknown; see OPEN_QUESTIONS. The Railway proxy sets `X-Forwarded-For`, so IP rotation can only be simulated with a sim-only trusted header. |
-
-Main stack risk: the entry write path on Postgres during a burst. Plan: write entries directly to PG (`INSERT ... ON CONFLICT DO NOTHING`) behind the Redis rate-limit gate. If M12 shows PG saturates, switch to a Redis Stream buffer with a worker flushing to PG and a drain barrier before the draw. This is designed but not built by default.
+# Architecture (as built)
 
 ## System diagram
 ```mermaid
 flowchart LR
-  subgraph Clients
-    B[Browser UI]
-    S[Simulator<br/>humans + bots]
+  B[Browser<br/>/ events · /drop · /dashboard · /admin/login] --> S
+  SIM[Simulator<br/>scripts/sim/run.ts] --> S
+  V[scripts/verify.ts] -- audit JSON --> S
+  V -- independent round fetch --> D[[drand quicknet<br/>api.drand.sh]]
+  subgraph S[server.mjs: one Node process]
+    N[Next.js 16 route handlers /api/*<br/>+ React pages]
+    SCH[In-process scheduler, every 200ms<br/>advisory-locked]
+    MEM[(In memory: rate-limit buckets,<br/>counters, 250ms read caches,<br/>FCFS sold-out flag)]
   end
-  subgraph Railway
-    LB[Railway proxy]
-    A1[app: Next.js<br/>UI + API]
-    A2[app replica]
-    W[worker<br/>draw / expiry / rollups]
-    R[(Redis<br/>limits, idem, sessions,<br/>FCFS gate, cache, counters)]
-    P[(Postgres<br/>ledger + audit)]
-  end
-  D[[drand public beacon<br/>optional]]
-  B --> LB
-  S --> LB
-  LB --> A1 & A2
-  A1 & A2 --> R
-  A1 & A2 --> P
-  W --> P
-  W --> R
-  W -. fetch beacon .-> D
-  A1 & A2 -. SSE pub/sub .-> R
+  N --> PG[(Postgres)]
+  SCH --> PG
+  SCH -- fetch committed round --> D
+  N --- MEM
 ```
 
 ## Components
-| Component | Responsibility |
-|---|---|
-| `app` | Auth/session, drop status, entry submission, FCFS purchase, claim confirm, result status, SSE, audit endpoint, admin API, dashboard UI. Stateless; any replica can serve any request. |
-| `worker` | State transitions on schedule (open, close, freeze), commit-reveal, draw, claim expiry, waitlist promotion, risk scoring at freeze, metrics rollup. Holds `pg_advisory_lock(drop_id)` for each critical job. |
-| `simulator` | Generates actors, drives scenarios, records client-side latency and outcomes, writes a run report. |
-| `verify` | Standalone script. Takes the audit JSON and recomputes the seed and ranking. Has no DB access. |
-| Redis | Ephemeral or rebuildable state only. |
-| Postgres | Durable truth. Every invariant is enforced here by constraints. |
+| Component | Where | Responsibility |
+|---|---|---|
+| `server.mjs` | repo root | Production entrypoint (`npm start`). Wraps Next.js to stamp the TCP peer address into `X-FD-Socket-IP`. |
+| Route handlers | `src/app/api/**` | Auth (demo login), drops, entries, purchase, status (`/me`), audit, admin, sim-only endpoints. |
+| Scheduler | `src/lib/scheduler.ts`, started from `src/instrumentation.ts` | Opens and closes windows, freezes (clustering and entry hash), draws. Every step re-checks status under `pg_try_advisory_xact_lock`, so duplicate ticks or instances are harmless. |
+| Lottery | `src/lib/lottery.ts` (`enter`, `freeze`, `draw`, `audit`, `myState`) | Entry, freeze, draw, audit. |
+| Draw math | `src/lib/draw-core.ts` | Pure functions shared with the verifier. |
+| Beacon | `src/lib/beacon.ts` | drand quicknet round math, BLS verification, fetch with test hook. |
+| FCFS | `src/lib/fcfs.ts` | Naive-but-correct `purchase` and deliberately broken `purchaseUnsafe`. |
+| Integrity | `src/lib/integrity.ts` | Independent invariant checker. |
+| Abuse | `src/lib/ratelimit.ts`, `src/lib/risk.ts`, `shedIfBusy` in `src/lib/http.ts` | Token buckets, draw-time clustering, load shedding. |
+| Reporting | `src/lib/report.ts` | The only reader of `sim_labels` (ground truth). |
+| Dashboard | `src/app/dashboard` | Comparison tables, across-seeds view, arrival-decile chart, live drops, demo controls. Cookie-gated via `/admin/login`. |
+| Simulator | `scripts/sim` | Labelled human and bot populations, scenarios, run reports. |
+| Verifier | `scripts/verify.ts` + `src/lib/verify-core.ts` | Recomputes a draw from public data only. |
 
 ## Where state lives
-| State | Location | Source of truth | If lost |
-|---|---|---|---|
-| Session | Redis `sess:*` (cookie holds an opaque id) | Redis | User signs in again. Their entry is unaffected (stored in PG). |
-| Entry | PG `entries` | PG | n/a |
-| Allocation / seat | PG `allocations`, `seats` | PG | n/a |
-| Draw inputs and outputs | PG `drops`, `draw_ranks` | PG | n/a |
-| Rate limit buckets | Redis | Redis | Limits reset. Brief over-admission is acceptable. |
-| Idempotency responses | Redis (24h) | Redis, with PG unique constraints as backstop | A retry re-executes and hits the unique constraint, so the result is the same. |
-| FCFS remaining counter | Redis | PG seats (Redis is a gate) | Rebuilt from PG on start |
-| Live counters / metrics | Redis, rolled up into PG `metric_snapshots` | PG events | Rebuilt from `events` |
-| Sim ground-truth labels | PG `sim_labels` | PG | **Never read by defense code** |
+| State | Location | Survives restart? |
+|---|---|---|
+| Users, drops, seats, entries, ranks, allocations, sim runs and labels | Postgres (see DATA_MODEL.md) | Yes |
+| Draw secret | `drops.secret_enc` (AES-256-GCM, key `DRAW_KEY`) until revealed in `secret_revealed` | Yes |
+| Session | Signed JWT cookie `fd_sid` (HS256, `SESSION_SECRET`), no server store | Yes (stateless) |
+| Admin session | Signed JWT cookie `fd_admin` (separate key), 8h | Yes (stateless) |
+| Idempotency | FCFS: `idempotency_keys` row in the same transaction. Lottery: `entries.request_id` | Yes |
+| Rate-limit buckets, live counters, read caches, FCFS sold-out flag | Process memory | **No** |
+| Pending client write (idempotency key) | Browser `sessionStorage` | Survives refresh |
 
 ## Request flows
+**Entry (lottery):** `POST /api/drops/:id/entries`
+1. CSRF header and `Idempotency-Key`.
+2. Session.
+3. Per-user and per-IP token buckets (429).
+4. Load shedding (503) when more than `MAX_DB_QUEUE` queries are waiting for a connection.
+5. One autocommit `INSERT … ON CONFLICT (drop_id,user_id) DO NOTHING`. A trigger takes `FOR SHARE` on the drop row and rejects the insert unless the drop is `open`.
+6. Response: 201 new, 201 replay for the same key, or 200 `alreadyEntered`.
 
-### Join (sign in)
-```mermaid
-sequenceDiagram
-  participant U as Client
-  participant A as app
-  participant R as Redis
-  participant P as Postgres
-  U->>A: POST /api/auth/verify {email, otp}
-  A->>P: upsert user, set verified_at
-  A->>R: SET sess:{sid} {userId} EX 24h
-  A-->>U: Set-Cookie sid (HttpOnly, Secure, SameSite=Lax)
-```
+**Close, freeze and draw** (scheduler):
+1. `open → closed` via UPDATE, which waits for in-flight inserts.
+2. Freeze: clustering if enabled, entry hash, commit to a future drand round (`beacon_round`), status `frozen`.
+3. When that round is published: fetch and verify it, outside any transaction.
+4. One transaction ranks every eligible entry and auto-confirms the top N into seats 1..N.
+5. Reveal the secret.
 
-### Entry (lottery mode)
-```mermaid
-sequenceDiagram
-  participant U as Client
-  participant A as app
-  participant R as Redis
-  participant P as Postgres
-  U->>A: POST /api/drops/:id/entries (Idempotency-Key)
-  A->>R: Lua: token buckets (user, ip, global)
-  alt over limit
-    A-->>U: 429 + Retry-After
-  end
-  A->>R: SET idem:{user}:{key} in_progress NX
-  A->>A: check drop.status == open (cached, server clock)
-  A->>P: INSERT entries ... ON CONFLICT (drop_id,user_id) DO NOTHING RETURNING
-  A->>P: INSERT events(entry_created / entry_duplicate)
-  A->>R: store idem response, INCR counters, record signals
-  A-->>U: 201 (new) or 200 (already entered), same body
-```
+If drand is unreachable for `BEACON_TIMEOUT_S` (default 30s), the draw records `beacon_status = 'fallback'` and proceeds commit-reveal only.
 
-### Draw (worker)
-```mermaid
-sequenceDiagram
-  participant W as worker
-  participant P as Postgres
-  participant D as drand
-  Note over W,P: Before open: commit = SHA256(secret) published
-  W->>P: at closes_at: status=closed (app rejects new entries)
-  W->>P: risk scoring, mark excluded entries, status=frozen, entries_hash
-  W->>D: fetch beacon round R (first round after freeze)
-  W->>P: BEGIN, advisory lock, seed = SHA256(secret||entries_hash||beacon)
-  W->>P: compute rank for every eligible entry, insert draw_ranks
-  W->>P: insert offers for top N into allocations (seat rows), status=drawn
-  W->>P: COMMIT, then reveal secret (status=claim)
-  W-->>W: NOTIFY / Redis publish result_ready
-```
+**FCFS:** `POST /api/drops/:id/purchase`. One transaction holds the idempotency row and claims a seat with `UPDATE seats SET held = true WHERE id = (SELECT … FOR UPDATE SKIP LOCKED LIMIT 1)`, then inserts the allocation. Partial unique indexes are the backstop.
 
-### Result and claim
-```mermaid
-sequenceDiagram
-  participant U as Client
-  participant A as app
-  participant P as Postgres
-  U->>A: GET /api/drops/:id/events (SSE) or GET /me (poll)
-  A-->>U: {state: offered, allocationId, expiresAt} | waitlist #k | lost
-  U->>A: POST /allocations/:aid/confirm (Idempotency-Key)
-  A->>P: UPDATE allocations SET status=confirmed WHERE id=$1 AND user_id=$2 AND status=offered AND expires_at>now()
-  A-->>U: 200 confirmed | 409 OFFER_EXPIRED
-  Note over P: worker: expire offers, then promote next waitlist rank into the freed seat
-```
+**Status:** `GET /api/drops/:id/me` (ETag). Clients poll every 3s.
 
-### FCFS mode (comparison baseline)
-`POST /api/drops/:id/purchase` runs a Redis Lua script that atomically checks the user is not in the buyers set, checks remaining > 0, decrements, and adds the user to buyers. On success, the app claims a free seat row in PG (`FOR UPDATE SKIP LOCKED`) and inserts the allocation. If the PG insert fails, the app compensates (`INCR` back). Unsafe mode skips Lua and locking and does a read-check-write in PG, so it oversells under concurrency on purpose.
+## Deliberate tradeoffs
+These were chosen for a solo, one-day build on a free-tier host. Each one lists the cost and the path back.
 
-## Why these choices
-- **Lottery over queue.** A virtual queue still orders people by arrival time, so bots win by arriving first. A lottery has no ordering to win.
-- **Seats as rows.** Overselling becomes structurally impossible: an allocation must reference one of the N seat rows, and a partial unique index allows only one active allocation per seat.
-- **Single-transaction draw.** A draw is either fully committed or not at all. Re-running it is deterministic, so crash recovery means "run again".
-- **PG as truth, Redis as accelerator.** Redis loss degrades protection briefly but never breaks integrity.
-- **Separate worker.** Time-based transitions must happen even with zero traffic, and exactly once.
+| Tradeoff | Why | Cost | Path back |
+|---|---|---|---|
+| **No Redis** | One less service to run and fail. Postgres already gives the correctness guarantees (unique indexes, row locks, transactions). | Rate limits, counters and caches are per process and reset on restart. | Move the token buckets and counters to Redis (`INCR`/Lua). The interfaces in `ratelimit.ts` and `counters.ts` are already isolated. |
+| **In-process scheduler** instead of a worker | Single deployable. Transitions are idempotent and advisory-locked, so a second instance is safe. | Draws only happen while the web process is up. A long GC pause delays transitions. | Run the same `tick()` from a separate `worker` process; no code change needed beyond the entrypoint. |
+| **Polling instead of SSE** | Simpler, cache-friendly (ETag), works through any proxy. | Up to about 3s delay to see a result; more requests per user. | Add SSE on top of `myState()`. Clients keep polling as the fallback. |
+| **No claim deadlines** (winners auto-confirmed) | Removes the confirm and expiry race surface for the MVP. | No checkout step; unclaimed seats are never re-offered. | Allocation statuses `offered`/`expired` and the `expires_at` column already exist; add an expiry job and waitlist promotion by `draw_ranks.rank`. |
+| **In-memory rate limiter** | Fast, zero dependencies. | **Correct only with a single instance.** Behind a load balancer each instance enforces its own buckets. | Redis-backed buckets. |
+| **Lottery idempotency on the entry row** | One round trip per entry. This cut 503s in the 50k run from 23k to 1.9k. | No 422 for reusing a key with a different body on entries (the body is empty anyway). | n/a |
+| **Demo login** instead of email OTP | Real auth was undecided (OPEN_QUESTIONS Q5). | Accounts are free to create, so **there is no Sybil cost in the demo build**. Off unless `DEV_LOGIN=true`. | Email OTP or phone verification (`feature/phone-verification` branch, unreviewed). |
+
+## Stack
+Node 20, Next.js 16.3, React 19.3, TypeScript 5.9, PostgreSQL 16+ (developed on 18), `pg` 8, `jose` 6 (JWT), `@noble/curves` 2 (BLS verification of drand), `undici` 7 (simulator HTTP), Vitest 4.
+
+## Configuration
+See `.env.example` and DEPLOY.md. Security-relevant flags:
+- `TRUST_PROXY=true` honours `X-Forwarded-For` (only behind a proxy that overwrites it).
+- `SIM_MODE=true` together with `SIM_SECRET` enables `/api/sim/*` and the simulated client-IP header.
+- `DEV_LOGIN=true` enables demo login.
+- `BEACON=off` disables drand (recorded as `disabled`).
+- `BEACON_TIMEOUT_S` sets the drand fallback window.

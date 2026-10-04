@@ -25,7 +25,7 @@ export function arrivalDeciles(arrivals: Record<string, number>, winners: Set<st
   return out;
 }
 
-export async function fairnessReport(runId: string, arrivals?: Record<string, number>) {
+export async function fairnessReport(runId: string, arrivals?: Record<string, number>, arrivalsAll?: Record<string, number>) {
   const p = pool();
   const { rows: run } = await p.query(
     "SELECT r.id, r.scenario, r.seed, r.config, r.drop_id, d.mode, d.inventory, d.status FROM sim_runs r JOIN drops d ON d.id = r.drop_id WHERE r.id = $1",
@@ -110,6 +110,7 @@ export async function fairnessReport(runId: string, arrivals?: Record<string, nu
     operators,
     integrity,
     arrivalDeciles: arrivals ? arrivalDeciles(arrivals, winnerIds) : null,
+    arrivalDecilesAll: arrivalsAll ? arrivalDeciles(arrivalsAll, winnerIds) : null,
     serverCounters: snapshot(dropId),
   };
 }

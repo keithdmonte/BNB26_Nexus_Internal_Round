@@ -1,5 +1,19 @@
 # Build Plan
 
+## Status as of 4 Oct 2026
+| Milestone | Status |
+|---|---|
+| M0 Scaffold, M1 FCFS + unsafe + integrity, M2 simulator, M3 lottery entry, M4 draw + audit + verify | Done |
+| M5 Multi-account clustering | Done (S4a/S4b/S4c) |
+| M6 Dashboard | Done: comparison, across-seeds ranges, arrival-decile chart, live drops, demo controls, cookie login |
+| M7 Participant UI | Done: event listing, event page, refresh-safe writes |
+| M8 Railway deploy | **Prepared, not executed** (Dockerfile, DEPLOY.md) |
+| M9 Full-scale runs + chaos | Full-scale multi-seed runs done locally. Crash-mid-draw tested with an injected exception, not `kill -9` |
+| Added after plan | drand beacon (verified, with explicit fallback), TRUST_PROXY + socket IP, admin cookie login, demo-login takeover fix, retrier/rotator bots |
+| Cut | Redis, separate worker, SSE, claim/waitlist, proof-of-work, email OTP (phone OTP is on unreviewed branch `feature/phone-verification`) |
+
+The plan below is the original hour-boxed plan, kept for reference.
+
 ## Constraints (confirmed)
 - **Solo builder.** Deadline is **Sun 4 Oct 2026, 10:00 IST**. Planning finished Sat 3 Oct around 16:40, so there are about 17h on the clock and about 11–12h of real build time once sleep is subtracted.
 - Hosting is the Railway free plan (probably), which means small resources and few services.

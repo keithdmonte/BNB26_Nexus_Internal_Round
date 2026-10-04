@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_ENV=production node server.mjs",
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "sim": "tsx scripts/sim/run.ts",
@@ -15,12 +15,14 @@
     "loadtest": "tsx scripts/loadtest-get.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "start:next": "next start"
   },
   "engines": {
     "node": ">=20.9"
   },
   "dependencies": {
+    "@noble/curves": "^2.4.0",
     "jose": "^6.2.12",
     "next": "^16.3.8",
     "pg": "^8.23.1",

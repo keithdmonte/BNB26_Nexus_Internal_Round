@@ -1,3 +1,5 @@
+import { adminCookieValid, adminTokenMatches, ADMIN_COOKIE, readCookie } from "@/lib/admin";
+import { isIP } from "node:net";
 import { pool } from "@/lib/db";
 
 export class ApiError extends Error {
@@ -52,14 +54,32 @@ export function simTrusted(req: Request): boolean {
   return process.env.SIM_MODE === "true" && !!process.env.SIM_SECRET && req.headers.get("x-sim-secret") === process.env.SIM_SECRET;
 }
 
-/** Client IP. The sim-only header is honoured only in SIM_MODE with the shared secret (see ABUSE_DEFENSE). */
+/** Set by server.mjs from the TCP socket on every request (any client-sent value is overwritten). */
+export const SOCKET_IP_HEADER = "x-fd-socket-ip";
+
+/**
+ * Client IP for rate limiting and clustering.
+ * - Sim-only header: honoured only in SIM_MODE with the shared secret (see ABUSE_DEFENSE).
+ * - X-Forwarded-For: trusted only with TRUST_PROXY=true (i.e. behind a proxy that overwrites it, like Railway's).
+ * - Otherwise the socket address stamped by server.mjs. Without it (e.g. plain `next start`) the IP is "unknown".
+ */
 export function clientIp(req: Request): string {
   if (simTrusted(req)) {
     const sim = req.headers.get("x-sim-client-ip");
     if (sim) return sim;
   }
-  const xff = req.headers.get("x-forwarded-for");
-  return xff ? xff.split(",")[0].trim() : "127.0.0.1";
+  if (process.env.TRUST_PROXY === "true") {
+    const xff = req.headers.get("x-forwarded-for");
+    if (xff) return xff.split(",")[0].trim();
+  }
+  const sock = req.headers.get(SOCKET_IP_HEADER);
+  if (sock) return sock.replace(/^::ffff:/, "");
+  return "unknown";
+}
+
+/** For inet columns: the IP if it parses, else NULL (e.g. "unknown" when no socket address is available). */
+export function inetOrNull(ip: string): string | null {
+  return isIP(ip) ? ip : null;
 }
 
 export function requireWriteHeaders(req: Request): string {
@@ -71,9 +91,11 @@ export function requireWriteHeaders(req: Request): string {
   return key;
 }
 
-export function requireAdmin(req: Request) {
-  const token = req.headers.get("x-admin-token") ?? new URL(req.url).searchParams.get("token");
-  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) throw new ApiError(403, "FORBIDDEN");
+/** Admin = X-Admin-Token header (scripts) or the fd_admin cookie from /admin/login. Never a URL query param. */
+export async function requireAdmin(req: Request) {
+  if (adminTokenMatches(req.headers.get("x-admin-token"))) return;
+  if (await adminCookieValid(readCookie(req, ADMIN_COOKIE))) return;
+  throw new ApiError(403, "FORBIDDEN");
 }
 
 export function requireSim(req: Request) {

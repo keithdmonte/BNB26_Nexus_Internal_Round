@@ -1,58 +1,35 @@
-# Session Reliability
+# Session Reliability (as built)
 
-> **Deadline build:** BUILD_PLAN.md "Lean MVP" overrides this doc where they differ (single Next.js service + Postgres, no Redis, signed-cookie sessions, poll instead of SSE, auto-confirm, no drand). This doc describes the target design.
-
-Principle: **the server owns all state; the client is a view.** Every screen can be rebuilt from `GET /api/drops/:id/me` plus `GET /api/drops/:id`.
+Principle: **the server owns all state; the client is a view.** Every participant screen is rebuilt from `GET /api/drops/:id` plus `GET /api/drops/:id/me`.
 
 ## Refresh
-- The session is an opaque `sid` cookie that maps to Redis `sess:*`. A refresh keeps the cookie.
-- On load, the page fetches `/me` and renders the state. Nothing important lives only in client memory.
-- Pending writes: before sending, the client stores `{intent, idempotencyKey}` in `sessionStorage`. After a refresh, if there is a pending intent and `/me` does not show it applied, the client re-sends it with the **same key**. The server either replays the result or executes it once.
-- The countdown uses the `serverTime` offset, so a refresh does not reset or distort it.
+- The session is a signed JWT cookie (`fd_sid`, 24h) with no server store, so a refresh keeps it.
+- Before sending a write, the page stores `{dropId, idempotencyKey}` in `sessionStorage` (`write()` in `src/app/drop/page.tsx`). After a refresh it re-sends with the **same key**: the server returns the original 201 (lottery, from `entries.request_id`; FCFS, from `idempotency_keys`) or 200 "already entered".
+- The countdown uses a server-time offset (`serverTime` on every response).
 
 ## Reconnect / flaky network
-- SSE reconnects with `Last-Event-ID`. On every (re)connect the server pushes a full `me` snapshot, so missed events don't matter.
-- If SSE fails 3 times, the client polls `/me` every 5–15s with jitter. ETag/304 keeps polling cheap.
-- If a write times out, the client retries with the same idempotency key using exponential backoff (0.5s, 1s, 2s, 4s; max 5 tries). A 409 `IN_PROGRESS` means "wait and retry the same key".
-- Lottery mode makes retries low-pressure: there are minutes left in the window, and the UI says so.
+- **No SSE.** The page polls the drop and `/me` every 3s; `/me` supports ETag/304.
+- Writes retry with the same key using exponential backoff (0.5s → 8s, 5 tries) and honour `Retry-After` on 429/503.
+- In lottery mode a retry costs nothing: entry time doesn't affect the odds, and the window is minutes long.
 
-## Session loss
+## App process restart / crash
 | Case | Effect |
 |---|---|
-| Redis flushed or restarted | Sessions are lost and the user must sign in again. Entries and allocations are untouched (PG). After sign-in, `/me` shows the correct state. |
-| Cookie cleared or new device | Same as above |
-| Session expires mid-claim | 401, sign in, then `/me` shows the offer if it is still within `expires_at` |
-
-Mitigation to consider: a longer claim TTL than the typical time to sign in again (default 5 min).
-
-## App instance failure
-- App replicas are stateless. If one dies mid-request:
-  - Before the PG commit, nothing is written, and the client retry (same key) executes fresh. The Redis `idem` "in_progress" marker has a 30s lock TTL, so it unblocks.
-  - After the PG commit, before the response, the client retry hits either the stored idem response or the unique constraint, so it gets the same outcome.
-- SSE clients on the dead instance reconnect to another replica and get the snapshot.
-
-## Worker failure
-| When | Recovery |
-|---|---|
-| During the window | No effect on entries (the app writes them). Railway restarts the worker. Missed scheduled transitions run on start: the worker reconciles `status` against `now()`. |
-| During risk scoring (before freeze) | Scoring is a pure function of the entries and signals, and is re-run from scratch. The exclusion updates happen in one transaction together with `status=frozen`. |
-| During the draw transaction | Rolls back. On restart the status is still `frozen`, and the re-run is deterministic (same secret, entries, and beacon round), so the result is identical. |
-| After the draw commit, before the secret reveal | Restart sees `drawn` with the secret not revealed, so it reveals. |
-| During expiry / promotion | Each seat is handled in its own transaction. A partial run leaves some offers unexpired, and the next tick picks them up. |
-| Two workers running at once (bad deploy) | The advisory lock plus status checks make every job safe to run twice. |
-
-**Beacon determinism:** the beacon round is fixed when freezing (stored in `drops.beacon_round`) **before** it is fetched, so a retry fetches the same round. If drand is unreachable for more than 60s, the worker records `beacon=""` and proceeds. This is shown on the audit page.
+| Restart between requests | Sessions survive (stateless JWT). Verified: kill -9 and restart, then the same cookie still returns `"state":"entered"`. |
+| Crash during an entry insert | It's an autocommit insert, so either it committed (a retry gets 201 replay / 200) or it didn't (a retry inserts). Never two rows: `UNIQUE (drop_id, user_id)`. |
+| Crash during an FCFS purchase | The transaction holds both the idempotency row and the seat claim, so it fully commits or fully rolls back; the retry re-executes or replays. |
+| Crash during the draw | The single transaction rolls back and the status stays `frozen`. The next tick re-runs it with the same secret, entries and committed drand round, giving an identical result (tested with an injected crash; a real `kill -9` mid-draw has not been tested). |
+| Crash after the draw commit | Nothing pending: the secret is revealed in the same transaction. |
+| Lost on restart | Rate-limit buckets, live counters, read caches. These are protection and telemetry only; correctness doesn't depend on them. |
 
 ## Dependency failure
 | Failure | Behaviour |
 |---|---|
-| Redis down | Rate limiting falls back to an in-process limiter per replica (looser). Idempotency falls back to the DB constraints. Sessions fail, so returning users get 401 (known gap). FCFS mode returns 503 (the gate is unavailable), which is safe but unavailable. Lottery entries still work for users who already have a session. **Known gap:** sessions depend on Redis. An option is signed-cookie sessions so auth survives a Redis outage (OPEN_QUESTIONS). |
-| Postgres down | Writes return 503 `DEPENDENCY_DOWN` + Retry-After. Reads of drop status come from the Redis cache. The window does not close early, but entries made during the outage are lost to the user until they retry. **Not survived:** a PG outage spanning the window close. An admin can extend `closes_at` (logged in `events` and visible on the audit). |
+| Postgres slow / pool exhausted | 503 `OVERLOADED` with Retry-After once more than `MAX_DB_QUEUE` queries are waiting. Clients retry with the same key. |
+| Postgres down | Writes and status calls error (500/503). **Not survived.** An outage across `closes_at` loses entries that would have arrived. An admin can move the window (`/api/admin/drops/:id/close` only shortens it; extending needs SQL). |
+| drand unreachable at draw time | The draw waits and retries for `BEACON_TIMEOUT_S` (default 30s), then proceeds commit-reveal only with `beacon_status = 'fallback'`, shown in the audit and the verify output. |
 
-## Tests that prove this (BUILD_PLAN M7, M11)
-1. Enter, refresh during the in-flight request, and confirm exactly one entry exists and the UI shows `entered`.
-2. 50 parallel identical requests with one key produce 1 execution and 49 replays or `IN_PROGRESS`.
-3. Kill the SSE connection, push a state change, reconnect, and check the client shows the new state.
-4. `kill -9` the worker inside the draw transaction (via a test hook that pauses after inserting half the ranks). Restart, and the result hash equals the result from an uninterrupted run.
-5. Kill an app replica during a 2k rps entry burst. Afterwards the success count reported by the simulator equals the entries count in PG.
-6. FLUSHALL Redis mid-window. There are no lost entries, and the integrity check passes.
+## Known gaps
+- Sessions can't be revoked server-side (logout only clears the cookie).
+- No live push; results appear within about 3s of the draw.
+- Single process: a crash pauses scheduling until restart. No data is lost; transitions resume on the next tick.

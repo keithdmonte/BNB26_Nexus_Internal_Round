@@ -4,7 +4,7 @@ import { json, requireAdmin, route } from "@/lib/http";
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (req) => {
-  requireAdmin(req);
+  await requireAdmin(req);
   const { rows } = await pool().query(
     `SELECT id, scenario, seed, started_at, ended_at, report FROM sim_runs WHERE report IS NOT NULL AND NOT archived ORDER BY started_at DESC LIMIT 50`,
   );

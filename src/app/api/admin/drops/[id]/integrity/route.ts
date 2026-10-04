@@ -5,7 +5,7 @@ import { checkIntegrity } from "@/lib/integrity";
 export const dynamic = "force-dynamic";
 
 export const GET = route<{ params: Promise<{ id: string }> }>(async (req, { params }) => {
-  requireAdmin(req);
+  await requireAdmin(req);
   const { id } = await params;
   return json(await checkIntegrity(pool(), id));
 });

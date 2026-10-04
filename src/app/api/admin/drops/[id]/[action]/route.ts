@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // Demo controls. open/close move the window edge to now; the scheduler performs the transition.
 export const POST = route<{ params: Promise<{ id: string; action: string }> }>(async (req, { params }) => {
-  requireAdmin(req);
+  await requireAdmin(req);
   const { id, action } = await params;
   if (action === "open") {
     await pool().query("UPDATE drops SET opens_at = least(opens_at, now()) WHERE id = $1 AND status = 'scheduled'", [id]);
@@ -23,7 +23,7 @@ export const POST = route<{ params: Promise<{ id: string; action: string }> }>(a
 });
 
 export const GET = route<{ params: Promise<{ id: string; action: string }> }>(async (req, { params }) => {
-  requireAdmin(req);
+  await requireAdmin(req);
   const { id, action } = await params;
   if (action !== "integrity") throw new ApiError(404, "NOT_FOUND");
   return json(await checkIntegrity(pool(), id));

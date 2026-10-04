@@ -51,7 +51,7 @@ const record = (k: string, ms: number, code: string) => {
 interface Res { status: number; code: string; body: any; retryAfterMs: number }
 async function call(
   actor: ActorType, endpoint: string, method: "GET" | "POST", path: string,
-  o: { token?: string; ip?: string; fp?: string; key?: string; body?: unknown } = {},
+  o: { token?: string; ip?: string; fp?: string; key?: string; body?: unknown; timeoutMs?: number } = {},
 ): Promise<Res> {
   const headers: Record<string, string> = { "content-type": "application/json", "x-requested-with": "fairdrop", "x-sim-secret": SIM_SECRET };
   if (o.token) headers.authorization = `Bearer ${o.token}`;
@@ -60,7 +60,8 @@ async function call(
   if (o.key) headers["idempotency-key"] = o.key;
   const t0 = performance.now();
   try {
-    const r = await request(TARGET + path, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body), dispatcher });
+    const r = await request(TARGET + path, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body), dispatcher,
+      ...(o.timeoutMs ? { headersTimeout: o.timeoutMs, bodyTimeout: o.timeoutMs } : {}) });
     const text = await r.body.text();
     const body = text ? JSON.parse(text) : null;
     const code = r.statusCode < 400 ? String(r.statusCode) : `${r.statusCode}:${body?.error?.code ?? "?"}`;
@@ -143,6 +144,7 @@ async function human(a: Actor) {
 
 async function fastBot(a: Actor) {
   await sleep(opensAtLocal + rng() * 30 - Date.now());
+  a.arrivalMs = Date.now() - opensAtLocal;
   for (let i = 0; i < 400 && Date.now() < closesAtLocal; i++) {
     const r = await call(a.type, "write", "POST", writePath, { token: a.token, ip: a.ip, fp: a.fp, key: randomUUID(), body: {} });
     outcome.set(a, r.code);
@@ -153,11 +155,44 @@ async function fastBot(a: Actor) {
 
 async function flooder(a: Actor) {
   await sleep(opensAtLocal - Date.now());
+  a.arrivalMs = Date.now() - opensAtLocal;
   const end = Math.min(closesAtLocal, Date.now() + (a.durationS ?? 20) * 1000);
   const gap = 1000 / (a.rps ?? 20);
   const inflight: Promise<unknown>[] = [];
   while (Date.now() < end) {
     inflight.push(call(a.type, "write", "POST", writePath, { token: a.token, ip: a.ip, fp: a.fp, key: randomUUID(), body: {} }).then((r) => {
+      if (r.status >= 200 && r.status < 300) outcome.set(a, r.code);
+      else if (!outcome.has(a)) outcome.set(a, r.code);
+    }));
+    await sleep(gap);
+  }
+  await Promise.all(inflight);
+}
+
+// Resends the SAME request with the SAME idempotency key every 50ms, ignoring Retry-After and every response.
+async function retrier(a: Actor) {
+  await sleep(opensAtLocal + rng() * 30 - Date.now());
+  a.arrivalMs = Date.now() - opensAtLocal;
+  const key = randomUUID();
+  for (let i = 0; i < 200 && Date.now() < closesAtLocal; i++) {
+    const r = await call(a.type, "write", "POST", writePath, { token: a.token, ip: a.ip, fp: a.fp, key, body: {} });
+    if (r.status >= 200 && r.status < 300) outcome.set(a, r.code);
+    else if (!outcome.has(a)) outcome.set(a, r.code);
+    await sleep(50);
+  }
+}
+
+const randomIp = () => `${11 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${1 + Math.floor(Math.random() * 254)}`;
+
+// Floods like a flooder, but every request comes from a NEW simulated client IP (X-Sim-Client-IP) with a new key.
+async function rotator(a: Actor) {
+  await sleep(opensAtLocal - Date.now());
+  a.arrivalMs = Date.now() - opensAtLocal;
+  const end = Math.min(closesAtLocal, Date.now() + (a.durationS ?? 20) * 1000);
+  const gap = 1000 / (a.rps ?? 20);
+  const inflight: Promise<unknown>[] = [];
+  while (Date.now() < end) {
+    inflight.push(call(a.type, "write", "POST", writePath, { token: a.token, ip: randomIp(), fp: a.fp, key: randomUUID(), body: {} }).then((r) => {
       if (r.status >= 200 && r.status < 300) outcome.set(a, r.code);
       else if (!outcome.has(a)) outcome.set(a, r.code);
     }));
@@ -214,7 +249,11 @@ async function main() {
   const t0 = Date.now();
   planHumans(actors, lottery, closesAtLocal - opensAtLocal);
   await Promise.all(actors.map((a) =>
-    a.type === "human" ? human(a) : a.type === "flooder" ? flooder(a) : fastBot(a),
+    a.type === "human" ? human(a)
+      : a.type === "flooder" ? flooder(a)
+      : a.type === "retrier" ? retrier(a)
+      : a.type === "rotator" ? rotator(a)
+      : fastBot(a),
   ));
   loop.disable();
   const activeS = (Date.now() - t0) / 1000;
@@ -249,7 +288,15 @@ async function main() {
   };
   // Planned arrival offset per human (ms after open): lets the server compute P(win) by arrival decile.
   const arrivals = Object.fromEntries(humansList.map((a) => [a.userId!, Math.round(a.arrivalMs ?? 0)]));
-  const rep = await call("human", "setup", "POST", `/api/sim/runs/${runId}/report`, { body: { client, arrivals } });
+  // First-request time for every account (bots included) that sent anything.
+  const arrivalsAll = Object.fromEntries(actors.filter((a) => a.arrivalMs !== undefined).map((a) => [a.userId!, Math.round(a.arrivalMs!)]));
+  // Saving the report occasionally took ~150s server-side (cause not found): wait for it rather than crash.
+  let rep = await call("human", "setup", "POST", `/api/sim/runs/${runId}/report`, { body: { client, arrivals, arrivalsAll }, timeoutMs: 300_000 });
+  if (!rep.body?.report) {
+    console.error(`[sim] report POST failed (${rep.code}); retrying once`);
+    rep = await call("human", "setup", "POST", `/api/sim/runs/${runId}/report`, { body: { client, arrivals, arrivalsAll }, timeoutMs: 300_000 });
+  }
+  if (!rep.body?.report) throw new Error(`report failed: ${rep.code}`);
   const report = rep.body.report;
   mkdirSync("runs", { recursive: true });
   const file = `runs/${s.id}-seed${SEED}-scale${SCALE}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;

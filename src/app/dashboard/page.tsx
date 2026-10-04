@@ -1,3 +1,6 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { adminCookieValid, ADMIN_COOKIE } from "@/lib/admin";
 import { pool } from "@/lib/db";
 import { checkIntegrity } from "@/lib/integrity";
 import { snapshot } from "@/lib/counters";
@@ -19,7 +22,10 @@ interface Summary {
   duplicateUsers: number;
   integrityOk: boolean;
 }
+interface Decile { decile: number; n: number; winners: number; pWin: number | null; fromMs: number | null; toMs: number | null }
 interface Report {
+  arrivalDeciles?: Decile[] | null;
+  arrivalDecilesAll?: Decile[] | null;
   scenario: string;
   mode: string;
   dropId: string;
@@ -39,11 +45,8 @@ const blocked = (r: Report) =>
     .filter(([k]) => k.endsWith("|write"))
     .reduce((n, [, v]) => n + Object.entries(v.codes).filter(([c]) => c.startsWith("429") || c.startsWith("503")).reduce((m, [, x]) => m + x, 0), 0);
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
-  const { token } = await searchParams;
-  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
-    return <main><h1>Fair Drop dashboard</h1><p className="muted">Admin token required: <code>/dashboard?token=…</code></p></main>;
-  }
+export default async function Dashboard() {
+  if (!(await adminCookieValid((await cookies()).get(ADMIN_COOKIE)?.value))) redirect("/admin/login");
   const p = pool();
   const { rows: runs } = await p.query<RunRow>(
     "SELECT id, scenario, seed, started_at, config, report FROM sim_runs WHERE report IS NOT NULL AND NOT archived ORDER BY started_at DESC LIMIT 200",
@@ -92,6 +95,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <RunsTable rows={headline} />
       </div>
 
+      <h2>Does arriving early help? P(win) by arrival time</h2>
+      <div className="card">
+        <DecileChart runs={runs} />
+      </div>
+
       <h2>Across seeds (full scale)</h2>
       <div className="card table-wrap">
         <SeedStats rows={runs.filter((r) => (r.config.scale ?? 1) === 1)} />
@@ -119,13 +127,73 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
 
       <h2>Demo controls</h2>
-      <DemoControls token={token} drops={live.map((d) => ({ id: d.id, name: d.name, status: d.status }))} />
+      <DemoControls drops={live.map((d) => ({ id: d.id, name: d.name, status: d.status }))} />
 
       <h2>All runs</h2>
       <div className="card table-wrap">
         <RunsTable rows={runs} showTime />
       </div>
     </main>
+  );
+}
+
+const latestWith = (runs: RunRow[], scenario: string) =>
+  runs.find((r) => r.scenario === scenario && (r.config.scale ?? 1) === 1 && (r.report.arrivalDecilesAll ?? r.report.arrivalDeciles));
+
+function DecileChart({ runs }: { runs: RunRow[] }) {
+  const series = [
+    { key: "S2", label: "Naive FCFS (S2)", color: "var(--series-2)", run: latestWith(runs, "S2") },
+    { key: "S3", label: "Fair Drop lottery (S3)", color: "var(--series-1)", run: latestWith(runs, "S3") },
+  ].map((s) => ({ ...s, data: s.run ? (s.run.report.arrivalDecilesAll ?? s.run.report.arrivalDeciles)! : null, all: !!s.run?.report.arrivalDecilesAll }));
+  if (series.every((s) => !s.data)) return <p className="muted">No full-scale S2/S3 run with arrival data yet.</p>;
+  const W = 640, H = 240, L = 48, R = 150, T = 12, B = 34;
+  const ymax = Math.max(0.01, ...series.flatMap((s) => (s.data ?? []).map((d) => d.pWin ?? 0))) * 1.1;
+  const x = (i: number) => L + ((W - L - R) * i) / 9;
+  const y = (v: number) => T + (H - T - B) * (1 - v / ymax);
+  const ticks = [0, ymax / 2, ymax].map((v) => Math.round(v * 1000) / 1000);
+  const pct = (v: number | null) => (v === null ? "–" : `${(v * 100).toFixed(1)}%`);
+  return (
+    <>
+      <div className="legend">
+        {series.map((s) => <span key={s.key}><i style={{ background: s.color }} />{s.label}{s.run ? ` · seed ${s.run.seed}` : " (no data)"}</span>)}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="P(win) by arrival decile for naive FCFS and the Fair Drop lottery; values in the table below" style={{ maxWidth: W, display: "block" }}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth={1} />
+            <text x={L - 6} y={y(t) + 4} textAnchor="end" fontSize={11} fill="var(--text-muted)">{(t * 100).toFixed(1)}%</text>
+          </g>
+        ))}
+        {Array.from({ length: 10 }, (_, i) => (
+          <text key={i} x={x(i)} y={H - B + 16} textAnchor="middle" fontSize={11} fill="var(--text-muted)">{i + 1}</text>
+        ))}
+        <text x={(L + W - R) / 2} y={H - 4} textAnchor="middle" fontSize={11} fill="var(--text-secondary)">arrival decile (1 = first 10% of accounts to send a request)</text>
+        {series.filter((s) => s.data).map((s) => (
+          <g key={s.key}>
+            <polyline fill="none" stroke={s.color} strokeWidth={2} points={s.data!.map((d, i) => `${x(i)},${y(d.pWin ?? 0)}`).join(" ")} />
+            {s.data!.map((d, i) => (
+              <circle key={i} cx={x(i)} cy={y(d.pWin ?? 0)} r={4} fill={s.color} stroke="var(--surface-1)" strokeWidth={2}>
+                <title>{`${s.label}, decile ${d.decile}: P(win) ${pct(d.pWin)} (${d.winners}/${d.n})`}</title>
+              </circle>
+            ))}
+            <text x={x(9) + 10} y={y(s.data![9].pWin ?? 0) + 4} fontSize={12} fill="var(--text-primary)">{s.key}: {pct(s.data![9].pWin)}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="table-wrap" style={{ marginTop: 8 }}>
+        <table>
+          <thead><tr><th className="l">P(win)</th>{Array.from({ length: 10 }, (_, i) => <th key={i}>D{i + 1}</th>)}</tr></thead>
+          <tbody>
+            {series.filter((s) => s.data).map((s) => (
+              <tr key={s.key}><td className="l">{s.label}{s.all ? "" : " (humans only)"}</td>{s.data!.map((d) => <td key={d.decile}>{pct(d.pWin)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
+        All accounts (humans and bots) ordered by when they first sent a request. Under FCFS the earliest decile takes every seat; under the lottery every decile has the same odds.
+      </p>
+    </>
   );
 }
 

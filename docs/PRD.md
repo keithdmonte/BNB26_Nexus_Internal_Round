@@ -1,6 +1,6 @@
 # Fair Drop: Product Requirements
 
-> **Deadline build:** BUILD_PLAN.md "Lean MVP" overrides this doc where they differ (single Next.js service + Postgres, no Redis, signed-cookie sessions, poll instead of SSE, auto-confirm, no drand). This doc describes the target design.
+> Product goals and scope. For what was actually built, see ARCHITECTURE.md (including "Deliberate tradeoffs"). Out-of-scope or cut items are marked below.
 
 ## Problem
 500 seats, ~50,000 people competing for them. In a "first click wins" sale, the fastest clients win. Bots are always faster than people, can send more requests, and can retry without limit. Bots therefore win most of the seats. We need a system where bots get no significant advantage, inventory stays correct under load, and we can show this with numbers.
@@ -64,12 +64,12 @@ Each item is measured by METRICS.md and shown on the dashboard.
 | S10 | Kill the app or worker mid-window or mid-draw: no lost entries, no duplicate draw | Pass |
 | S11 | Every scenario is reproducible from a seed and config file | Yes |
 
-## Requirement coverage (problem statement → design)
+## Requirement coverage (problem statement → as built)
 | Requirement | Covered by | Gaps |
 |---|---|---|
-| High concurrency | Redis gate, Postgres unique constraints, horizontal app instances | 50k scale is unproven until M12. Hosting limits are unknown (OPEN_QUESTIONS) |
-| Abuse handling | Lottery, rate limits, idempotency, risk scoring | **Multi-account (Sybil) is reduced, not solved.** See ABUSE_DEFENSE |
-| Allocation integrity | Seat rows plus partial unique indexes, single transactional draw | None in design. Must be proven by the M3/M8 concurrency tests |
-| Reliable sessions | Server-side state, idempotency keys, SSE with poll fallback, deterministic draw | Total Postgres outage is not survived (no HA) |
-| Adversarial testing | Simulator scenarios S-0 to S-7 | IP rotation is simulated, not real |
-| Fairness measurement | Ground-truth labels kept out of defense logic, METRICS.md | Detection is tuned against our own bots, so results may be optimistic |
+| High concurrency | One Node process + Postgres; one-statement entry insert; `SKIP LOCKED` seat claims; load shedding; 250ms read caches | 50k runs are local only (simulator and server on one laptop). Single instance (in-memory limiter). Not load-tested on a host |
+| Abuse handling | Lottery (speed is irrelevant), one entry per account, idempotency, per-user/per-IP rate limits, draw-time clustering | **Multi-account (Sybil) is reduced, not solved.** Evasive bots (S4c) aren't caught, and demo login makes accounts free |
+| Allocation integrity | Seat rows + partial unique indexes, close waits for in-flight entries (trigger + FOR SHARE), single-transaction draw, independent checker | None found; concurrency tests and every simulator run report 0 oversell / 0 duplicates in the safe modes |
+| Reliable sessions | Stateless signed sessions, same-key retries, server-owned state rebuilt from `/me`, deterministic re-runnable draw | Polling, not push. A Postgres outage is not survived. No claim step |
+| Adversarial testing | Simulator: human, fast_bot, flooder, retrier, rotator, multi; scenarios S0–S8; multi-seed runs | IP rotation is simulated via a trusted header |
+| Fairness measurement | Ground truth kept out of defense code; advantage multiplier, seat shares, P(win) by arrival decile, false-flag rate, latency, integrity; across-seeds ranges | Latency is client-observed on localhost. Detection is tuned against our own bots |

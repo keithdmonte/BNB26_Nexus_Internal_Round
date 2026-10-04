@@ -7,8 +7,8 @@ export interface BotSpec {
   type: Exclude<ActorType, "human">;
   operators: number;
   accountsEach: number;
-  rps?: number; // flooder: requests/s per account
-  durationS?: number; // flooder
+  rps?: number; // flooder, rotator: requests/s per account
+  durationS?: number; // flooder, rotator
   sharedFp?: number; // multi: probability an account reuses the operator's device fingerprint
   ipPool?: number; // multi: IPs per operator, all in one /24
   ageS?: number; // account age at drop open
@@ -52,6 +52,11 @@ export const SCENARIOS: Record<string, Scenario> = {
   S4c: { ...base, id: "S4c", title: "Evasive multi-account (distinct devices, aged), clustering ON", mode: "lottery", windowS: 60,
     defenses: { rateLimit: true, risk: true, riskPolicy: "collapse" }, humans: 48_000,
     bots: [{ type: "multi", operators: 2, accountsEach: 1000, sharedFp: 0, ipPool: 1000, ageS: 90 * 86400 }] },
+  S7: { ...base, id: "S7", title: "Same-key retry storm (retriers)", mode: "lottery", windowS: 60,
+    defenses: { rateLimit: true, risk: false }, humans: 47_500, bots: [{ type: "retrier", operators: 25, accountsEach: 100 }] },
+  S8: { ...base, id: "S8", title: "IP rotation flood (new IP per request)", mode: "lottery", windowS: 60,
+    defenses: { rateLimit: true, risk: false }, humans: 47_500,
+    bots: [{ type: "fast_bot", operators: 25, accountsEach: 98 }, { type: "rotator", operators: 5, accountsEach: 10, rps: 40, durationS: 20 }] },
   S6: { ...base, id: "S6", title: "FCFS-unsafe (race condition) under attack", mode: "fcfs_unsafe", windowS: 20,
     defenses: { rateLimit: false, risk: false }, humans: 10_000, bots: [{ type: "fast_bot", operators: 10, accountsEach: 200 }] },
 };
