@@ -191,10 +191,10 @@ export default function Home() {
 
           {canAct && (
             <button className="primary big-btn" disabled={busy} onClick={() => write(drop.id, drop.mode, crypto.randomUUID())}>
-              {busy ? "Submitting…" : drop.mode === "lottery" ? "Enter the draw" : "Buy seat"}
+              {busy ? "Submitting…" : drop.mode === "lottery" ? "Enter the queue" : "Buy seat"}
             </button>
           )}
-          {drop.mode === "lottery" && drop.status === "open" && <div className="muted" style={{ fontSize: 12, marginTop: 8, textAlign: "center" }}>No need to hurry: entering early gives no advantage.</div>}
+          {drop.mode === "lottery" && drop.status === "open" && <div className="muted" style={{ fontSize: 12, marginTop: 8, textAlign: "center" }}>No need to hurry: your place in the queue is random, not first-come.</div>}
           {error && <p style={{ color: "var(--critical)" }}>{error}</p>}
 
           {drop.mode === "lottery" && (
