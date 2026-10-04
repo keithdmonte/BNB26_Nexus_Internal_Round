@@ -1,0 +1,206 @@
+{
+  "runId": "c43bd238-ff28-4f41-b90a-fc030a23ac84",
+  "scenario": "S4b",
+  "seed": 1,
+  "mode": "lottery",
+  "defenses": {
+    "risk": true,
+    "rateLimit": true,
+    "riskPolicy": "collapse"
+  },
+  "dropId": "3faa42e2-e4ee-4ccc-a04d-dc5b4c7a8693",
+  "dropStatus": "drawn",
+  "inventory": 500,
+  "seatsAllocated": 500,
+  "summary": {
+    "botAccountShare": 0.04,
+    "botSeatShare": 0,
+    "humanSeatShare": 1,
+    "pWinHuman": 0.010416666666666666,
+    "pWinBot": 0,
+    "advantageMultiplier": 0,
+    "humansWonNothing": false,
+    "humanFalseFlagRate": 0.005,
+    "botFlagRecall": 0.999,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 48000,
+      "entered": 48000,
+      "flagged": 240,
+      "winners": 500,
+      "seats": 500
+    },
+    "multi": {
+      "accounts": 2000,
+      "entered": 2000,
+      "flagged": 1998,
+      "winners": 0,
+      "seats": 0
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "multi-0",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 0,
+      "fairShare": 10
+    },
+    {
+      "operatorId": "multi-1",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 0,
+      "fairShare": 10
+    }
+  ],
+  "integrity": {
+    "inventory": 500,
+    "activeAllocations": 500,
+    "heldSeats": 500,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "arrivalDeciles": [
+    {
+      "decile": 1,
+      "fromMs": 0,
+      "toMs": 1588,
+      "n": 4800,
+      "winners": 70,
+      "pWin": 0.014583333333333334
+    },
+    {
+      "decile": 2,
+      "fromMs": 1588,
+      "toMs": 3189,
+      "n": 4800,
+      "winners": 49,
+      "pWin": 0.010208333333333333
+    },
+    {
+      "decile": 3,
+      "fromMs": 3190,
+      "toMs": 4757,
+      "n": 4800,
+      "winners": 46,
+      "pWin": 0.009583333333333333
+    },
+    {
+      "decile": 4,
+      "fromMs": 4757,
+      "toMs": 7709,
+      "n": 4800,
+      "winners": 50,
+      "pWin": 0.010416666666666666
+    },
+    {
+      "decile": 5,
+      "fromMs": 7711,
+      "toMs": 15495,
+      "n": 4800,
+      "winners": 48,
+      "pWin": 0.01
+    },
+    {
+      "decile": 6,
+      "fromMs": 15495,
+      "toMs": 23275,
+      "n": 4800,
+      "winners": 46,
+      "pWin": 0.009583333333333333
+    },
+    {
+      "decile": 7,
+      "fromMs": 23279,
+      "toMs": 30949,
+      "n": 4800,
+      "winners": 39,
+      "pWin": 0.008125
+    },
+    {
+      "decile": 8,
+      "fromMs": 30950,
+      "toMs": 38752,
+      "n": 4800,
+      "winners": 44,
+      "pWin": 0.009166666666666667
+    },
+    {
+      "decile": 9,
+      "fromMs": 38753,
+      "toMs": 46303,
+      "n": 4800,
+      "winners": 53,
+      "pWin": 0.011041666666666667
+    },
+    {
+      "decile": 10,
+      "fromMs": 46303,
+      "toMs": 53999,
+      "n": 4800,
+      "winners": 55,
+      "pWin": 0.011458333333333333
+    }
+  ],
+  "serverCounters": {
+    "req_entry": 53620,
+    "entries": 50000
+  },
+  "client": {
+    "activeSeconds": 68.798,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 11,
+    "simValid": true,
+    "endpoints": {
+      "multi|write": {
+        "requests": 2000,
+        "p50": 476.2,
+        "p95": 716,
+        "p99": 736.7,
+        "codes": {
+          "201": 2000
+        },
+        "errorRate": 0
+      },
+      "human|write": {
+        "requests": 51620,
+        "p50": 1.8,
+        "p95": 954.7,
+        "p99": 1006,
+        "codes": {
+          "201": 48000,
+          "503:OVERLOADED": 3620
+        },
+        "errorRate": 0.07012785741960481
+      },
+      "human|me": {
+        "requests": 9622,
+        "p50": 7.3,
+        "p95": 959.2,
+        "p99": 1004.8,
+        "codes": {
+          "200": 9622
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 2006,
+        "p50": 377,
+        "p95": 667,
+        "p99": 693,
+        "codes": {
+          "200": 2006
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

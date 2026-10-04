@@ -1,0 +1,280 @@
+{
+  "runId": "9eaee1f6-8237-40f6-b568-a3b9c88bd557",
+  "scenario": "S2",
+  "seed": 4,
+  "mode": "fcfs",
+  "defenses": {
+    "risk": false,
+    "rateLimit": false
+  },
+  "dropId": "51ec9da4-4a3b-4fd6-b1b2-b351f60d9e8d",
+  "dropStatus": "done",
+  "inventory": 500,
+  "seatsAllocated": 500,
+  "summary": {
+    "botAccountShare": 0.05,
+    "botSeatShare": 1,
+    "humanSeatShare": 0,
+    "pWinHuman": 0,
+    "pWinBot": 0.2,
+    "advantageMultiplier": null,
+    "humansWonNothing": true,
+    "humanFalseFlagRate": null,
+    "botFlagRecall": null,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 47500,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 0,
+      "seats": 0
+    },
+    "fast_bot": {
+      "accounts": 2450,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 450,
+      "seats": 450
+    },
+    "flooder": {
+      "accounts": 50,
+      "entered": 0,
+      "flagged": 0,
+      "winners": 50,
+      "seats": 50
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "fast_bot-10",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 25,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-2",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 24,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-1",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 23,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-4",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 22,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-8",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 21,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-0",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 21,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-16",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 20,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-18",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 20,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-22",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 20,
+      "fairShare": 0.98
+    },
+    {
+      "operatorId": "fast_bot-21",
+      "type": "fast_bot",
+      "accounts": 98,
+      "seats": 20,
+      "fairShare": 0.98
+    }
+  ],
+  "integrity": {
+    "inventory": 500,
+    "activeAllocations": 500,
+    "heldSeats": 500,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "arrivalDeciles": [
+    {
+      "decile": 1,
+      "fromMs": 135,
+      "toMs": 697,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 2,
+      "fromMs": 697,
+      "toMs": 902,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 3,
+      "fromMs": 902,
+      "toMs": 1087,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 4,
+      "fromMs": 1087,
+      "toMs": 1279,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 5,
+      "fromMs": 1279,
+      "toMs": 1494,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 6,
+      "fromMs": 1494,
+      "toMs": 1740,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 7,
+      "fromMs": 1740,
+      "toMs": 2048,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 8,
+      "fromMs": 2048,
+      "toMs": 2488,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 9,
+      "fromMs": 2488,
+      "toMs": 3247,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    },
+    {
+      "decile": 10,
+      "fromMs": 3247,
+      "toMs": 15564,
+      "n": 4750,
+      "winners": 0,
+      "pWin": 0
+    }
+  ],
+  "serverCounters": {
+    "req_purchase": 69850,
+    "purchase_ok": 500,
+    "sold_out": 69350
+  },
+  "client": {
+    "activeSeconds": 37.77,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 11,
+    "simValid": true,
+    "endpoints": {
+      "fast_bot|write": {
+        "requests": 2450,
+        "p50": 614.8,
+        "p95": 886.5,
+        "p99": 1022.8,
+        "codes": {
+          "201": 450,
+          "410:SOLD_OUT": 2000
+        },
+        "errorRate": 0
+      },
+      "flooder|write": {
+        "requests": 19900,
+        "p50": 7886,
+        "p95": 11146.7,
+        "p99": 11283.6,
+        "codes": {
+          "201": 50,
+          "410:SOLD_OUT": 19850
+        },
+        "errorRate": 0
+      },
+      "human|write": {
+        "requests": 47500,
+        "p50": 7363.3,
+        "p95": 11136.1,
+        "p99": 11220.2,
+        "codes": {
+          "410:SOLD_OUT": 47500
+        },
+        "errorRate": 0
+      },
+      "human|me": {
+        "requests": 9445,
+        "p50": 6776.4,
+        "p95": 11328,
+        "p99": 11503.6,
+        "codes": {
+          "200": 9445
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 1945,
+        "p50": 321.7,
+        "p95": 517.5,
+        "p99": 534.1,
+        "codes": {
+          "200": 1945
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "runId": "705477ee-e863-4b50-b530-399d120d50a4",
+  "scenario": "S4a",
+  "seed": 2,
+  "mode": "lottery",
+  "defenses": {
+    "risk": false,
+    "rateLimit": true
+  },
+  "dropId": "0975c39d-a493-468d-935b-3491f0e2714b",
+  "dropStatus": "drawn",
+  "inventory": 500,
+  "seatsAllocated": 500,
+  "summary": {
+    "botAccountShare": 0.04,
+    "botSeatShare": 0.046,
+    "humanSeatShare": 0.954,
+    "pWinHuman": 0.0099375,
+    "pWinBot": 0.0115,
+    "advantageMultiplier": 1.1572327044025157,
+    "humansWonNothing": false,
+    "humanFalseFlagRate": 0,
+    "botFlagRecall": 0,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "integrityOk": true
+  },
+  "byType": {
+    "human": {
+      "accounts": 48000,
+      "entered": 48000,
+      "flagged": 0,
+      "winners": 477,
+      "seats": 477
+    },
+    "multi": {
+      "accounts": 2000,
+      "entered": 2000,
+      "flagged": 0,
+      "winners": 23,
+      "seats": 23
+    }
+  },
+  "operators": [
+    {
+      "operatorId": "multi-1",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 15,
+      "fairShare": 10
+    },
+    {
+      "operatorId": "multi-0",
+      "type": "multi",
+      "accounts": 1000,
+      "seats": 8,
+      "fairShare": 10
+    }
+  ],
+  "integrity": {
+    "inventory": 500,
+    "activeAllocations": 500,
+    "heldSeats": 500,
+    "oversell": 0,
+    "duplicateUsers": 0,
+    "doubleBookedSeats": 0,
+    "inventoryConsistent": true,
+    "ok": true
+  },
+  "arrivalDeciles": [
+    {
+      "decile": 1,
+      "fromMs": 2,
+      "toMs": 1566,
+      "n": 4800,
+      "winners": 50,
+      "pWin": 0.010416666666666666
+    },
+    {
+      "decile": 2,
+      "fromMs": 1566,
+      "toMs": 3174,
+      "n": 4800,
+      "winners": 46,
+      "pWin": 0.009583333333333333
+    },
+    {
+      "decile": 3,
+      "fromMs": 3174,
+      "toMs": 4760,
+      "n": 4800,
+      "winners": 49,
+      "pWin": 0.010208333333333333
+    },
+    {
+      "decile": 4,
+      "fromMs": 4761,
+      "toMs": 7719,
+      "n": 4800,
+      "winners": 51,
+      "pWin": 0.010625
+    },
+    {
+      "decile": 5,
+      "fromMs": 7721,
+      "toMs": 15442,
+      "n": 4800,
+      "winners": 56,
+      "pWin": 0.011666666666666667
+    },
+    {
+      "decile": 6,
+      "fromMs": 15448,
+      "toMs": 23356,
+      "n": 4800,
+      "winners": 61,
+      "pWin": 0.012708333333333334
+    },
+    {
+      "decile": 7,
+      "fromMs": 23360,
+      "toMs": 30959,
+      "n": 4800,
+      "winners": 41,
+      "pWin": 0.008541666666666666
+    },
+    {
+      "decile": 8,
+      "fromMs": 30963,
+      "toMs": 38674,
+      "n": 4800,
+      "winners": 41,
+      "pWin": 0.008541666666666666
+    },
+    {
+      "decile": 9,
+      "fromMs": 38674,
+      "toMs": 46409,
+      "n": 4800,
+      "winners": 35,
+      "pWin": 0.007291666666666667
+    },
+    {
+      "decile": 10,
+      "fromMs": 46411,
+      "toMs": 54000,
+      "n": 4800,
+      "winners": 47,
+      "pWin": 0.009791666666666667
+    }
+  ],
+  "serverCounters": {
+    "req_entry": 52957,
+    "entries": 50000
+  },
+  "client": {
+    "activeSeconds": 68.762,
+    "humanUnresolvedRate": 0,
+    "eventLoopDelayP95Ms": 11,
+    "simValid": true,
+    "endpoints": {
+      "multi|write": {
+        "requests": 2925,
+        "p50": 547.6,
+        "p95": 903.4,
+        "p99": 1263.6,
+        "codes": {
+          "201": 2000,
+          "409:WINDOW_NOT_OPEN": 918,
+          "503:OVERLOADED": 7
+        },
+        "errorRate": 0.002393162393162393
+      },
+      "human|write": {
+        "requests": 50032,
+        "p50": 1.8,
+        "p95": 877.5,
+        "p99": 912,
+        "codes": {
+          "201": 48000,
+          "409:WINDOW_NOT_OPEN": 31,
+          "503:OVERLOADED": 2001
+        },
+        "errorRate": 0.03999440358170771
+      },
+      "human|me": {
+        "requests": 9653,
+        "p50": 1.6,
+        "p95": 885.3,
+        "p99": 912.9,
+        "codes": {
+          "200": 9653
+        },
+        "errorRate": 0
+      },
+      "human|result": {
+        "requests": 2038,
+        "p50": 389.3,
+        "p95": 617.2,
+        "p99": 636.8,
+        "codes": {
+          "200": 2038
+        },
+        "errorRate": 0
+      }
+    }
+  }
+}
