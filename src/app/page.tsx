@@ -15,7 +15,7 @@ function deviceFp(): string {
 
 const STATE_TEXT: Record<string, string> = {
   not_entered: "You haven't entered yet.",
-  entered: "You're in the draw. Entering early gives no advantage. Results appear here after the window closes.",
+  entered: "You're in the draw.",
   under_review: "Your entry is under review.",
   confirmed: "You got a seat!",
   lost: "Not selected this time.",
@@ -110,48 +110,102 @@ export default function Home() {
   const countdown = (ms: number) => `${Math.max(0, Math.floor(ms / 60000))}:${String(Math.max(0, Math.floor(ms / 1000) % 60)).padStart(2, "0")}`;
   const canAct = drop && user && drop.status === "open" && me && ["not_entered", "not_purchased"].includes(me.state);
 
+  const STAGES = ["scheduled", "open", "draw", "result"];
+  const stage = !drop ? -1 : drop.status === "scheduled" ? 0 : drop.status === "open" ? 1 : ["closed", "frozen"].includes(drop.status) ? 2 : 3;
+  const resultClass = me?.state === "confirmed" ? "win" : me && ["entered", "under_review"].includes(me.state) ? "wait" : "";
+  const RESULT_SUB: Record<string, string> = {
+    entered: "Every entry has the same odds, whenever it arrived.",
+    confirmed: "Your seat is confirmed.",
+    lost: "The draw was random and publicly verifiable.",
+    not_entered: drop?.status === "scheduled" ? "Entries open when the countdown ends." : "Enter any time before the window closes.",
+  };
+
   return (
-    <main style={{ maxWidth: 640 }}>
-      <h1>Fair Drop</h1>
-      <p className="secondary">High-demand drops where bots can&apos;t win by being faster.</p>
+    <main style={{ maxWidth: 680 }}>
+      <nav className="nav">
+        <div className="brand"><span className="brand-mark">◆</span>Fair Drop</div>
+        {user && <span className="user-chip">{user.email}</span>}
+      </nav>
+
+      <section className="hero">
+        <h1>Fair access for high-demand drops.</h1>
+        <p>No refresh wars. No bots winning on speed. Enter once during the window, and everyone gets the same odds in a draw anyone can verify.</p>
+      </section>
+
+      <div className="steps">
+        <div className="step"><div className="n">1</div><b>Enter once</b><span>Any time in the window</span></div>
+        <div className="step"><div className="n">2</div><b>Fair draw</b><span>Random, committed in advance</span></div>
+        <div className="step"><div className="n">3</div><b>Verify it</b><span>Public audit for every draw</span></div>
+      </div>
 
       {user === null && (
-        <div className="card row">
-          <input placeholder="you@college.edu" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="email" />
-          <button className="primary" onClick={login}>Sign in</button>
-          <span className="muted" style={{ fontSize: 12 }}>Demo sign-in (stands in for email OTP)</span>
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="eyebrow">Sign in to take part</div>
+          <div className="signin" style={{ marginTop: 10 }}>
+            <input placeholder="you@college.edu" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && login()} aria-label="email" />
+            <button className="primary" onClick={login}>Continue</button>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Demo sign-in (stands in for email OTP verification)</div>
         </div>
       )}
-      {user && <p className="muted">Signed in as {user.email}</p>}
 
       {drops.length > 1 && (
-        <div className="row" style={{ margin: "12px 0" }}>
+        <div className="row" style={{ marginBottom: 12 }}>
           <select value={dropId ?? ""} onChange={(e) => { setDropId(e.target.value); setMe(null); }} aria-label="drop">
-            {drops.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.status})</option>)}
+            {drops.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.status}</option>)}
           </select>
         </div>
       )}
 
       {drop && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="muted" style={{ fontSize: 12 }}>{drop.mode === "lottery" ? "Lottery: one entry per verified account, equal odds" : "First come, first served"}</div>
-          <h2 style={{ margin: "4px 0" }}>{drop.name}</h2>
-          <div className="secondary">{drop.inventory} seats · status <b>{drop.status}</b>{drop.mode === "lottery" ? ` · ${drop.entrantCount} entries` : ""}</div>
-          {drop.status === "scheduled" && <div className="stat"><div className="v">{countdown(opens - serverNow)}</div><div className="k">until the window opens</div></div>}
-          {drop.status === "open" && <div className="stat"><div className="v">{countdown(closes - serverNow)}</div><div className="k">left to {drop.mode === "lottery" ? "enter. No need to hurry." : "buy"}</div></div>}
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <div className="eyebrow">{drop.mode === "lottery" ? "Fair lottery · one entry per verified account" : "First come, first served"}</div>
+              <h2>{drop.name}</h2>
+            </div>
+            <span className={`pill ${drop.status === "open" ? "live" : stage === 3 ? "done" : ""}`}>
+              {drop.status === "open" ? "Live" : drop.status === "scheduled" ? "Upcoming" : stage === 3 ? "Drawn" : "Drawing"}
+            </span>
+          </div>
 
-          {me && <p style={{ fontSize: 18, fontWeight: 600 }}>{STATE_TEXT[me.state] ?? me.state}{me.allocation ? ` Seat #${me.allocation.seatNo}.` : ""}</p>}
+          <div className="tiles">
+            <div className="tile"><div className="v">{drop.inventory}</div><div className="k">seats</div></div>
+            <div className="tile"><div className="v">{drop.mode === "lottery" ? drop.entrantCount.toLocaleString() : "–"}</div><div className="k">entries</div></div>
+            <div className="tile">
+              <div className="v">{drop.status === "scheduled" ? countdown(opens - serverNow) : drop.status === "open" ? countdown(closes - serverNow) : "0:00"}</div>
+              <div className="k">{drop.status === "scheduled" ? "until open" : drop.status === "open" ? "left to enter" : "window closed"}</div>
+            </div>
+          </div>
+
+          {drop.mode === "lottery" && (
+            <div className="timeline" aria-label="drop progress">
+              {STAGES.map((st, i) => <div key={st} className={`tl ${i <= stage ? "on" : ""}`}><i />{["Upcoming", "Entries open", "Draw", "Results"][i]}</div>)}
+            </div>
+          )}
+
+          {me && (
+            <div className={`result ${resultClass}`}>
+              <div className="t">{STATE_TEXT[me.state] ?? me.state}{me.allocation ? ` Seat #${me.allocation.seatNo}` : ""}</div>
+              {RESULT_SUB[me.state] && <div className="s">{RESULT_SUB[me.state]}</div>}
+            </div>
+          )}
+          {!user && user !== undefined && <div className="result"><div className="t">Sign in to enter</div></div>}
+
           {canAct && (
-            <button className="primary" disabled={busy} onClick={() => write(drop.id, drop.mode, crypto.randomUUID())}>
+            <button className="primary big-btn" disabled={busy} onClick={() => write(drop.id, drop.mode, crypto.randomUUID())}>
               {busy ? "Submitting…" : drop.mode === "lottery" ? "Enter the draw" : "Buy seat"}
             </button>
           )}
+          {drop.mode === "lottery" && drop.status === "open" && <div className="muted" style={{ fontSize: 12, marginTop: 8, textAlign: "center" }}>No need to hurry: entering early gives no advantage.</div>}
           {error && <p style={{ color: "var(--critical)" }}>{error}</p>}
+
           {drop.mode === "lottery" && (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Draw commitment <code>{drop.commit}</code>. After the draw, anyone can re-check it at <a href={`/api/drops/${drop.id}/audit`}>the audit</a>.
-              {me?.entry && <> Your entry id <code>{me.entry.publicId.slice(0, 16)}…</code></>}
-            </p>
+            <div className="fineprint">
+              Draw commitment <code>{drop.commit?.slice(0, 24)}…</code> published before entries opened.{" "}
+              <a href={`/api/drops/${drop.id}/audit`}>View audit</a>
+              {me?.entry && <> · your entry id <code>{me.entry.publicId.slice(0, 12)}…</code></>}
+            </div>
           )}
         </div>
       )}
