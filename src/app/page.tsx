@@ -1,215 +1,106 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-interface DropInfo { id: string; name: string; mode: string; status: string; inventory: number; opensAt: string; closesAt: string; commit: string | null; entrantCount: number; serverTime: string }
-interface MeState { state: string; dropStatus: string; entry: { publicId: string } | null; allocation: { seatNo: number } | null; rank: number | null }
+interface Ev { id: string; name: string; mode: string; status: string; inventory: number; opens_at: string; closes_at: string; entries: number; sold: number }
 
-const PENDING = "fairdrop.pending"; // { dropId, key } survives refresh so a retry reuses the same Idempotency-Key
-
-function deviceFp(): string {
-  const raw = [navigator.userAgent, screen.width, screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.language].join("|");
-  let h = 0;
-  for (let i = 0; i < raw.length; i++) h = (Math.imul(31, h) + raw.charCodeAt(i)) | 0;
-  return `web-${(h >>> 0).toString(16)}`;
+// "Title | Venue | Category" packed into the drop name keeps the schema unchanged.
+function parse(name: string) {
+  const [title, venue, category] = name.split("|").map((x) => x.trim());
+  return { title, venue: venue ?? "Online", category: category ?? "Event" };
 }
 
-const STATE_TEXT: Record<string, string> = {
-  not_entered: "You haven't entered yet.",
-  entered: "You're in the draw.",
-  under_review: "Your entry is under review.",
-  confirmed: "You got a seat!",
-  lost: "Not selected this time.",
-  missed: "The entry window has closed.",
-  not_purchased: "Seats are on sale now.",
-  sold_out: "Sold out.",
+const POSTERS = [
+  ["#2a78d6", "#7b3fe4"], ["#eb6834", "#d03b6b"], ["#1baf7a", "#2a78d6"], ["#eda100", "#eb6834"], ["#7b3fe4", "#e87ba4"], ["#0d366b", "#1baf7a"],
+];
+function poster(id: string) {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return POSTERS[Math.abs(h) % POSTERS.length];
+}
+
+const fmt = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}:${String(r).padStart(2, "0")}`;
 };
 
-export default function Home() {
-  const [user, setUser] = useState<{ email: string } | null | undefined>(undefined);
-  const [email, setEmail] = useState("");
-  const [drops, setDrops] = useState<{ id: string; name: string; status: string }[]>([]);
-  const [dropId, setDropId] = useState<string | null>(null);
-  const [drop, setDrop] = useState<DropInfo | null>(null);
-  const [me, setMe] = useState<MeState | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const skew = useRef(0);
+export default function Events() {
+  const [events, setEvents] = useState<Ev[] | null>(null);
+  const [skew, setSkew] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [filter, setFilter] = useState("All");
 
   useEffect(() => {
-    fetch("/api/me").then(async (r) => setUser(r.ok ? (await r.json()).user : null));
-    fetch("/api/drops").then(async (r) => {
-      const j = await r.json();
-      setDrops(j.drops ?? []);
-      const fromUrl = new URLSearchParams(location.search).get("drop");
-      setDropId(fromUrl ?? j.drops?.[0]?.id ?? null);
-    });
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, []);
-
-  const write = useCallback(async (id: string, mode: string, key: string) => {
-    setBusy(true);
-    setError("");
-    sessionStorage.setItem(PENDING, JSON.stringify({ dropId: id, key }));
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        const r = await fetch(`/api/drops/${id}/${mode === "lottery" ? "entries" : "purchase"}`, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-requested-with": "fairdrop", "idempotency-key": key, "x-device-fp": deviceFp() },
-          body: "{}",
-        });
+    const load = () =>
+      fetch("/api/drops").then(async (r) => {
         const j = await r.json();
-        if (r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429 && r.status !== 409) || j.error?.code === "WINDOW_CLOSED") {
-          sessionStorage.removeItem(PENDING);
-          if (!r.ok) setError(j.error?.message ?? j.error?.code);
-          break;
-        }
-        const wait = Number(r.headers.get("retry-after") ?? 1) * 1000;
-        await new Promise((res) => setTimeout(res, Math.max(wait, 500 * 2 ** attempt)));
-      } catch {
-        await new Promise((res) => setTimeout(res, 500 * 2 ** attempt)); // network blip: retry same key
-      }
-    }
-    setBusy(false);
+        setSkew(new Date(j.serverTime).getTime() - Date.now());
+        setEvents(j.drops ?? []);
+      });
+    load();
+    const a = setInterval(load, 3000);
+    const b = setInterval(() => setNow(Date.now()), 250);
+    return () => { clearInterval(a); clearInterval(b); };
   }, []);
 
-  // Poll drop + my state. On load, replay any write that was in flight when the page was refreshed.
-  useEffect(() => {
-    if (!dropId) return;
-    let stop = false;
-    const load = async () => {
-      const d = await fetch(`/api/drops/${dropId}`).then((r) => (r.ok ? r.json() : null));
-      if (stop || !d) return;
-      skew.current = new Date(d.serverTime).getTime() - Date.now();
-      setDrop(d);
-      if (user) {
-        const m = await fetch(`/api/drops/${dropId}/me`).then((r) => (r.ok ? r.json() : null));
-        if (!stop && m) setMe(m);
-      }
-    };
-    load();
-    const t = setInterval(load, 3000);
-    const pending = JSON.parse(sessionStorage.getItem(PENDING) ?? "null");
-    if (user && pending?.dropId === dropId) {
-      fetch(`/api/drops/${dropId}`).then((r) => r.json()).then((d) => write(dropId, d.mode, pending.key).then(load));
-    }
-    return () => { stop = true; clearInterval(t); };
-  }, [dropId, user, write]);
-
-  const login = async () => {
-    const r = await fetch("/api/auth/dev-login", { method: "POST", headers: { "content-type": "application/json", "x-device-fp": deviceFp() }, body: JSON.stringify({ email }) });
-    const j = await r.json();
-    if (r.ok) setUser(j.user);
-    else setError(j.error?.message ?? "login failed");
-  };
-
-  const serverNow = now + skew.current;
-  const opens = drop ? new Date(drop.opensAt).getTime() : 0;
-  const closes = drop ? new Date(drop.closesAt).getTime() : 0;
-  const countdown = (ms: number) => `${Math.max(0, Math.floor(ms / 60000))}:${String(Math.max(0, Math.floor(ms / 1000) % 60)).padStart(2, "0")}`;
-  const canAct = drop && user && drop.status === "open" && me && ["not_entered", "not_purchased"].includes(me.state);
-
-  const STAGES = ["scheduled", "open", "draw", "result"];
-  const stage = !drop ? -1 : drop.status === "scheduled" ? 0 : drop.status === "open" ? 1 : ["closed", "frozen"].includes(drop.status) ? 2 : 3;
-  const resultClass = me?.state === "confirmed" ? "win" : me && ["entered", "under_review"].includes(me.state) ? "wait" : "";
-  const RESULT_SUB: Record<string, string> = {
-    entered: "Every entry has the same odds, whenever it arrived.",
-    confirmed: "Your seat is confirmed.",
-    lost: "The draw was random and publicly verifiable.",
-    not_entered: drop?.status === "scheduled" ? "Entries open when the countdown ends." : "Enter any time before the window closes.",
-  };
+  const t = now + skew;
+  const cats = ["All", ...new Set((events ?? []).map((e) => parse(e.name).category))];
+  const shown = (events ?? []).filter((e) => filter === "All" || parse(e.name).category === filter);
+  const live = shown.filter((e) => e.status === "open");
 
   return (
-    <main style={{ maxWidth: 680 }}>
+    <main style={{ maxWidth: 1120 }}>
       <nav className="nav">
         <div className="brand"><span className="brand-mark">◆</span>Fair Drop</div>
-        {user && <span className="user-chip">{user.email}</span>}
+        <span className="user-chip">Fair tickets. No bots. No refresh wars.</span>
       </nav>
 
       <section className="hero">
-        <h1>Fair access for high-demand drops.</h1>
-        <p>No refresh wars. No bots winning on speed. Enter once during the window, and everyone gets the same odds in a draw anyone can verify.</p>
+        <h1>Upcoming drops</h1>
+        <p>Pick an event and enter any time while the window is open. Everyone gets equal odds in a draw anyone can verify.</p>
       </section>
 
-      <div className="steps">
-        <div className="step"><div className="n">1</div><b>Enter once</b><span>Any time in the window</span></div>
-        <div className="step"><div className="n">2</div><b>Fair draw</b><span>Random, committed in advance</span></div>
-        <div className="step"><div className="n">3</div><b>Verify it</b><span>Public audit for every draw</span></div>
+      <div className="chips">
+        {cats.map((c) => <button key={c} className={`chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>)}
+        {live.length > 0 && <span className="pill live" style={{ marginLeft: "auto" }}>{live.length} live now</span>}
       </div>
 
-      {user === null && (
-        <div className="panel" style={{ marginBottom: 16 }}>
-          <div className="eyebrow">Sign in to take part</div>
-          <div className="signin" style={{ marginTop: 10 }}>
-            <input placeholder="you@college.edu" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && login()} aria-label="email" />
-            <button className="primary" onClick={login}>Continue</button>
-          </div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Demo sign-in (stands in for email OTP verification)</div>
-        </div>
-      )}
+      {events === null && <p className="muted">Loading events…</p>}
+      {events && shown.length === 0 && <p className="muted">No events yet. Create one from the dashboard.</p>}
 
-      {drops.length > 1 && (
-        <div className="row" style={{ marginBottom: 12 }}>
-          <select value={dropId ?? ""} onChange={(e) => { setDropId(e.target.value); setMe(null); }} aria-label="drop">
-            {drops.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.status}</option>)}
-          </select>
-        </div>
-      )}
-
-      {drop && (
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <div className="eyebrow">{drop.mode === "lottery" ? "Fair lottery · one entry per verified account" : "First come, first served"}</div>
-              <h2>{drop.name}</h2>
-            </div>
-            <span className={`pill ${drop.status === "open" ? "live" : stage === 3 ? "done" : ""}`}>
-              {drop.status === "open" ? "Live" : drop.status === "scheduled" ? "Upcoming" : stage === 3 ? "Drawn" : "Drawing"}
-            </span>
-          </div>
-
-          <div className="tiles">
-            <div className="tile"><div className="v">{drop.inventory}</div><div className="k">seats</div></div>
-            <div className="tile"><div className="v">{drop.mode === "lottery" ? drop.entrantCount.toLocaleString() : "–"}</div><div className="k">entries</div></div>
-            <div className="tile">
-              <div className="v">{drop.status === "scheduled" ? countdown(opens - serverNow) : drop.status === "open" ? countdown(closes - serverNow) : "0:00"}</div>
-              <div className="k">{drop.status === "scheduled" ? "until open" : drop.status === "open" ? "left to enter" : "window closed"}</div>
-            </div>
-          </div>
-
-          {drop.mode === "lottery" && (
-            <div className="timeline" aria-label="drop progress">
-              {STAGES.map((st, i) => <div key={st} className={`tl ${i <= stage ? "on" : ""}`}><i />{["Upcoming", "Entries open", "Draw", "Results"][i]}</div>)}
-            </div>
-          )}
-
-          {me && (
-            <div className={`result ${resultClass}`}>
-              <div className="t">{STATE_TEXT[me.state] ?? me.state}{me.allocation ? ` Seat #${me.allocation.seatNo}` : ""}</div>
-              {RESULT_SUB[me.state] && <div className="s">{RESULT_SUB[me.state]}</div>}
-            </div>
-          )}
-          {!user && user !== undefined && <div className="result"><div className="t">Sign in to enter</div></div>}
-
-          {canAct && (
-            <button className="primary big-btn" disabled={busy} onClick={() => write(drop.id, drop.mode, crypto.randomUUID())}>
-              {busy ? "Submitting…" : drop.mode === "lottery" ? "Enter the draw" : "Buy seat"}
-            </button>
-          )}
-          {drop.mode === "lottery" && drop.status === "open" && <div className="muted" style={{ fontSize: 12, marginTop: 8, textAlign: "center" }}>No need to hurry: entering early gives no advantage.</div>}
-          {error && <p style={{ color: "var(--critical)" }}>{error}</p>}
-
-          {drop.mode === "lottery" && (
-            <div className="fineprint">
-              Draw commitment <code>{drop.commit?.slice(0, 24)}…</code> published before entries opened.{" "}
-              <a href={`/api/drops/${drop.id}/audit`}>View audit</a>
-              {me?.entry && <> · your entry id <code>{me.entry.publicId.slice(0, 12)}…</code></>}
-            </div>
-          )}
-        </div>
-      )}
-      {drops.length === 0 && <p className="muted">No drops yet.</p>}
+      <div className="events">
+        {shown.map((e) => {
+          const p = parse(e.name);
+          const [c1, c2] = poster(e.id);
+          const opens = new Date(e.opens_at).getTime(), closes = new Date(e.closes_at).getTime();
+          const isLive = e.status === "open";
+          const drawn = ["drawn", "claim", "done"].includes(e.status);
+          const status = e.status === "scheduled" ? { label: `Tickets drop in ${fmt(opens - t)}`, cls: "soon" }
+            : isLive ? { label: `Live · closes in ${fmt(closes - t)}`, cls: "live" }
+            : drawn ? { label: e.mode === "lottery" ? "Results out" : "Sold out", cls: "done" }
+            : { label: "Drawing winners…", cls: "soon" };
+          const progress = e.status === "scheduled" ? 0 : isLive ? Math.min(1, (t - opens) / (closes - opens)) : 1;
+          return (
+            <a key={e.id} href={`/drop?drop=${e.id}`} className="ev">
+              <div className="ev-poster" style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}>
+                <span className="ev-cat">{p.category}</span>
+                <span className="ev-title">{p.title}</span>
+                {isLive && <span className="ev-live">● LIVE</span>}
+              </div>
+              <div className="ev-body">
+                <div className="ev-venue">{p.venue}</div>
+                <div className={`ev-status ${status.cls}`}>{status.label}</div>
+                <div className="ev-bar"><i style={{ width: `${progress * 100}%` }} /></div>
+                <div className="ev-meta">
+                  <span>{e.inventory} seats</span>
+                  <span>{e.mode === "lottery" ? `${e.entries.toLocaleString()} entered` : `${e.sold} sold`}</span>
+                  <span>{e.mode === "lottery" ? "Fair draw" : "First come"}</span>
+                </div>
+              </div>
+            </a>
+          );
+        })}
+      </div>
     </main>
   );
 }

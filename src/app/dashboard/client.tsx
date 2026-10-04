@@ -30,7 +30,7 @@ export function DemoControls({ token, drops }: { token: string; drops: { id: str
         </select>
         <label className="secondary">seats <input type="number" value={inventory} min={1} onChange={(e) => setInventory(Number(e.target.value))} style={{ width: 80 }} /></label>
         <label className="secondary">window s <input type="number" value={windowS} min={10} onChange={(e) => setWindowS(Number(e.target.value))} style={{ width: 80 }} /></label>
-        <button className="primary" onClick={() => admin("/api/admin/drops", { name: `Live demo (${mode})`, mode, inventory, windowS, opensInS: 15, config: { rateLimit: true, risk: mode === "lottery" } })}>
+        <button className="primary" onClick={() => admin("/api/admin/drops", { name: `Live Demo Drop | Main Stage | ${mode === "lottery" ? "Fair Draw" : "First Come"}`, mode, inventory, windowS, opensInS: 15, config: { rateLimit: true, risk: mode === "lottery" } })}>
           Create live drop (opens in 15s)
         </button>
         <span className="muted">{msg}</span>
