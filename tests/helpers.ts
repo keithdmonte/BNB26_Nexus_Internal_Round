@@ -6,7 +6,7 @@ export async function resetDb() {
   if (!/_test(\?|$)/.test(process.env.DATABASE_URL ?? "")) throw new Error(`refusing to reset non-test DB: ${process.env.DATABASE_URL}`);
   await pool().query(
     `TRUNCATE sim_labels, sim_runs, metric_snapshots, events, idempotency_keys,
-              allocations_unsafe, allocations, draw_ranks, entries, seats, drops, users CASCADE`,
+              allocations_unsafe, allocations, orders, draw_ranks, entries, seats, drops, users CASCADE`,
   );
 }
 

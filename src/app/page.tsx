@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
+import { posterPhoto } from "@/lib/posters";
 
-interface Ev { id: string; name: string; mode: string; status: string; inventory: number; opens_at: string; closes_at: string; entries: number; sold: number }
+interface Ev { id: string; name: string; mode: string; status: string; inventory: number; opens_at: string; closes_at: string; sale_opens_at: string | null; mine: { queuePos: number | null; booked: boolean } | null; entries: number; sold: number }
 
 // "Title | Venue | Category" packed into the drop name keeps the schema unchanged.
 function parse(name: string) {
@@ -75,19 +76,34 @@ export default function Events() {
           const opens = new Date(e.opens_at).getTime(), closes = new Date(e.closes_at).getTime();
           const isLive = e.status === "open";
           const drawn = ["drawn", "claim", "done"].includes(e.status);
+          const saleAt = e.sale_opens_at ? new Date(e.sale_opens_at).getTime() : 0;
+          const preSale = isLive && saleAt > t;
           const status = e.status === "scheduled" ? { label: `Tickets drop in ${fmt(opens - t)}`, cls: "soon" }
+            : preSale ? { label: `Queue open · sale starts in ${fmt(saleAt - t)}`, cls: "soon" }
             : isLive ? { label: `Live · closes in ${fmt(closes - t)}`, cls: "live" }
             : drawn ? { label: e.mode === "lottery" ? "Results out" : "Sold out", cls: "done" }
             : { label: "Drawing winners…", cls: "soon" };
-          const progress = e.status === "scheduled" ? 0 : isLive ? Math.min(1, (t - opens) / (closes - opens)) : 1;
+          const progress = e.status === "scheduled" || preSale ? 0 : isLive ? Math.min(1, (t - opens) / (closes - opens)) : 1;
           return (
             <a key={e.id} href={`/drop?drop=${e.id}`} className="ev">
-              <div className="ev-poster" style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}>
+              <div
+                className="ev-poster"
+                style={{
+                  background: posterPhoto(p.title)
+                    ? `linear-gradient(180deg, rgba(0,0,0,.08) 25%, rgba(0,0,0,.78)), url(${posterPhoto(p.title)}) center / cover, linear-gradient(135deg, ${c1}, ${c2})`
+                    : `linear-gradient(135deg, ${c1}, ${c2})`,
+                }}
+              >
                 <span className="ev-cat">{p.category}</span>
                 <span className="ev-title">{p.title}</span>
-                {isLive && <span className="ev-live">● LIVE</span>}
+                {isLive && (preSale ? <span className="ev-live queue">● QUEUE OPEN</span> : <span className="ev-live">● LIVE</span>)}
               </div>
               <div className="ev-body">
+                {e.mine && (
+                  <div className={`ev-mine ${e.mine.booked ? "booked" : ""}`}>
+                    {e.mine.booked ? "✓ Your tickets are confirmed" : e.mine.queuePos ? `You're in the queue · #${e.mine.queuePos.toLocaleString("en-IN")}` : "You're in the draw"}
+                  </div>
+                )}
                 <div className="ev-venue">{p.venue}</div>
                 <div className={`ev-status ${status.cls}`}>{status.label}</div>
                 <div className="ev-bar"><i style={{ width: `${progress * 100}%` }} /></div>

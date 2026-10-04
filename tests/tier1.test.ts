@@ -64,7 +64,7 @@ describe("cached()", () => {
 });
 
 describe("seedDemo()", () => {
-  it("creates 4 events spaced relative to now and hides older non-sim drops", async () => {
+  it("creates the demo events spaced relative to now and hides older non-sim drops", async () => {
     const old = await makeDrop("lottery", 1, "drawn");
     const c = await pool().connect();
     try {
@@ -74,14 +74,15 @@ describe("seedDemo()", () => {
       expect(out.created).toHaveLength(DEMO_EVENTS.length);
       out.created.forEach((e, i) => {
         const offset = (e.opensAt.getTime() - before) / 1000;
-        expect(offset).toBeGreaterThanOrEqual(30 + i * 60 - 1);
-        expect(offset).toBeLessThanOrEqual(30 + i * 60 + 1);
+        const want = 30 + DEMO_EVENTS[i].openInS + i * 60;
+        expect(offset).toBeGreaterThanOrEqual(want - 1);
+        expect(offset).toBeLessThanOrEqual(want + 1);
         expect((e.closesAt.getTime() - e.opensAt.getTime()) / 1000).toBe(300);
       });
       const { rows } = await c.query("SELECT config ? 'hidden' AS hidden FROM drops WHERE id = $1", [old]);
       expect(rows[0].hidden).toBe(true);
       const secrets = await c.query("SELECT count(*)::int n FROM drops WHERE id = ANY($1) AND secret_enc IS NOT NULL AND commit IS NOT NULL", [out.created.map((e) => e.id)]);
-      expect(secrets.rows[0].n).toBe(4);
+      expect(secrets.rows[0].n).toBe(DEMO_EVENTS.length);
     } finally {
       c.release();
     }

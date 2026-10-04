@@ -1,5 +1,5 @@
 // Fresh demo events relative to now. Usage:
-//   npm run seed:demo -- [--first-open-in 30] [--gap 60] [--window 300] [--keep-old]
+//   npm run seed:demo -- [--first-open-in 0] [--gap 0] [--window 43200]  (each event also has its own openInS) [--keep-old] [--only <name text>]
 import pg from "pg";
 import { seedDemo } from "../src/lib/demo.ts";
 
@@ -11,10 +11,11 @@ const flag = (name: string, def: number) => {
   return i >= 0 ? Number(argv[i + 1]) : def;
 };
 const opts = {
-  firstOpenInS: flag("first-open-in", 30),
-  gapS: flag("gap", 60),
-  windowS: flag("window", 300),
+  firstOpenInS: flag("first-open-in", 0),
+  gapS: flag("gap", 0),
+  windowS: flag("window", 12 * 3600),
   hideOld: !argv.includes("--keep-old"),
+  only: argv.includes("--only") ? argv[argv.indexOf("--only") + 1] : undefined,
 };
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL ?? "postgres://localhost:5432/fairdrop" });
 await client.connect();

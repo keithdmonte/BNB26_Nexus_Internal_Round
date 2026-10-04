@@ -1,6 +1,7 @@
 import { pool, tx } from "@/lib/db";
 import { invalidateDrop } from "@/lib/drops";
 import { draw, freeze } from "@/lib/lottery";
+import { advanceQueue, fillBots, instantBotSales } from "@/lib/queue";
 
 // In-process replacement for the worker (Lean MVP). Every step re-checks status under an
 // advisory lock, so running two instances or ticking twice is harmless.
@@ -20,8 +21,8 @@ const skipped = new Set<string>();
 export async function tick() {
   const { rows } = await pool().query(
     `SELECT id, mode, status, opens_at <= now() AS should_open, closes_at <= now() AS should_close,
-            secret_enc IS NULL AS no_secret
-     FROM drops WHERE status IN ('scheduled', 'open', 'closed', 'frozen')`,
+            secret_enc IS NULL AS no_secret, config
+     FROM drops WHERE status IN ('scheduled', 'open', 'closed', 'frozen', 'claim')`,
   );
   for (const d of rows) {
     if (d.mode === "lottery" && d.no_secret) {
@@ -35,9 +36,14 @@ export async function tick() {
     try {
       if (d.status === "scheduled" && d.should_open) await transition(d.id, "scheduled", "open", "opens_at");
       else if (d.status === "open" && d.should_close)
-        await transition(d.id, "open", d.mode === "lottery" ? "closed" : "done", "closes_at");
+        await transition(d.id, "open", d.mode === "lottery" && !d.config?.instantQueue ? "closed" : "done", "closes_at");
       else if (d.status === "closed") await freeze(d.id);
+      else if (d.status === "open" && d.config?.instantQueue) {
+        await instantBotSales(d.id);
+        if (d.config?.bots) await fillBots(d.id);
+      } else if (d.status === "open" && d.config?.demo && d.config?.bots) await fillBots(d.id);
       else if (d.status === "frozen") await draw(d.id);
+      else if (d.status === "claim" && d.config?.seatSelect) await advanceQueue(d.id);
     } catch (e) {
       console.error(`[scheduler] drop ${d.id} (${d.status}) failed:`, (e as Error).message);
     }

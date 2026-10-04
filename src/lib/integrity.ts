@@ -16,12 +16,14 @@ export async function checkIntegrity(c: pg.Pool | pg.ClientBase, dropId: string)
   const { rows: d } = await c.query("SELECT mode, inventory FROM drops WHERE id = $1", [dropId]);
   if (!d[0]) throw new Error("drop not found");
   const table = d[0].mode === "fcfs_unsafe" ? "allocations_unsafe" : "allocations";
+  // Seats of one order (seat-select drops, up to 6) count as one purchase; anything else is one per allocation.
+  const orderKey = table === "allocations" ? "coalesce(order_id, id)" : "id";
   const { rows } = await c.query(
     `SELECT
        (SELECT count(*)::int FROM ${table} WHERE drop_id = $1 AND status IN ('offered','confirmed')) AS active,
        (SELECT count(*)::int FROM seats WHERE drop_id = $1 AND held) AS held,
        (SELECT count(*)::int FROM (SELECT user_id FROM ${table} WHERE drop_id = $1 AND status IN ('offered','confirmed')
-          GROUP BY user_id HAVING count(*) > 1) x) AS dup_users,
+          GROUP BY user_id HAVING count(DISTINCT ${orderKey}) > 1) x) AS dup_users,
        (SELECT count(*)::int FROM (SELECT seat_id FROM ${table} WHERE drop_id = $1 AND status IN ('offered','confirmed')
           GROUP BY seat_id HAVING count(*) > 1) x) AS dup_seats`,
     [dropId],

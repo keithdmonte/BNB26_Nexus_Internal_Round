@@ -7,6 +7,8 @@ import { scoreEntries } from "@/lib/risk";
 import { decryptSecret } from "@/lib/secret";
 import { beaconEnabled, beaconTimeoutMs, fetchVerifiedBeacon, QUICKNET, roundAt, roundTime } from "@/lib/beacon";
 import { inc } from "@/lib/counters";
+import { instantQueueSlot, startQueue } from "@/lib/queue";
+import { instantState, seatState } from "@/lib/checkout";
 
 function isFrozenError(e: unknown) {
   return (e as { code?: string; message?: string })?.code === "23514" && /entries are frozen/.test((e as Error).message);
@@ -31,12 +33,21 @@ export async function enter(
   const p = pool();
   const body = (createdAt: Date) => ({ entry: { publicId: pid, createdAt }, state: "entered" });
   try {
-    const ins = await p.query(
-      `INSERT INTO entries (drop_id, user_id, public_id, ip, device_fp, request_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (drop_id, user_id) DO NOTHING RETURNING created_at`,
-      [drop.id, userId, pid, inetOrNull(meta.ip), meta.deviceFp, key],
-    );
+    const insert = (c: pg.ClientBase | pg.Pool, q: { pos: number; waitS: number } | null) =>
+      c.query(
+        `INSERT INTO entries (drop_id, user_id, public_id, ip, device_fp, request_id, queue_pos, queue_admit_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(secs => $8::float))
+         ON CONFLICT (drop_id, user_id) DO NOTHING RETURNING created_at`,
+        [drop.id, userId, pid, inetOrNull(meta.ip), meta.deviceFp, key, q?.pos ?? null, q?.waitS ?? null],
+      );
+    // Instant demo queue: queue number (FCFS before the sale, random after) taken in the same transaction.
+    const ins = drop.config.instantQueue
+      ? await tx(async (c) => {
+          const ex = await c.query("SELECT 1 FROM entries WHERE drop_id = $1 AND user_id = $2", [drop.id, userId]);
+          if (ex.rows[0]) return { rows: [] as { created_at: Date }[] };
+          return insert(c, await instantQueueSlot(c, drop.id, drop.config));
+        })
+      : await insert(p, null);
     if (ins.rows[0]) {
       inc(drop.id, "entries");
       return { status: 201, body: body(ins.rows[0].created_at), replayed: false };
@@ -164,6 +175,19 @@ export async function draw(dropId: string, opts: { crashAfterRanks?: boolean; be
       [dropId, ranked.map((r) => byPid.get(r.publicId)!.id), ranked.map((_, i) => i), ranked.map((r) => r.key)],
     );
     if (opts.crashAfterRanks) throw new Error("injected crash mid-draw");
+    const { rows: cfgRows } = await c.query("SELECT config FROM drops WHERE id = $1", [dropId]);
+    const cfg = cfgRows[0].config ?? {};
+    if (cfg.seatSelect) {
+      // Seat-select: the draw only fixes queue order; seats are picked when each rank is admitted.
+      await c.query(
+        `UPDATE drops SET seed = $2, beacon_value = $5, beacon_signature = $6, beacon_status = $7,
+                          secret_revealed = $3, drawn_at = now(), rank_fn_version = $4
+         WHERE id = $1`,
+        [dropId, seed, Buffer.from(secretHex, "hex"), RANK_FN_VERSION, beacon.value, beacon.signature, beacon.status],
+      );
+      await startQueue(c, dropId, cfg);
+      return true;
+    }
     const winners = ranked.slice(0, d[0].inventory).map((r) => byPid.get(r.publicId)!);
     // Auto-confirm (Lean MVP): winners get seat 1..k in rank order.
     await c.query(
@@ -210,7 +234,7 @@ export async function audit(dropId: string) {
     p.query("SELECT public_id FROM entries WHERE drop_id = $1 AND status = 'active' ORDER BY public_id", [dropId]),
     p.query("SELECT status, exclusion_reason, count(*)::int n FROM entries WHERE drop_id = $1 AND status <> 'active' GROUP BY 1, 2", [dropId]),
     p.query(
-      `SELECT a.rank, e.public_id FROM allocations a JOIN entries e ON e.id = a.entry_id
+      `SELECT DISTINCT a.rank, e.public_id FROM allocations a JOIN entries e ON e.id = a.entry_id
        WHERE a.drop_id = $1 AND a.status = 'confirmed' ORDER BY a.rank`,
       [dropId],
     ),
@@ -240,7 +264,7 @@ export async function myState(drop: Drop, userId: string) {
     ),
     drop.mode === "lottery"
       ? p.query(
-          `SELECT e.public_id, e.created_at, e.status, r.rank FROM entries e
+          `SELECT e.id, e.public_id, e.created_at, e.status, e.queue_pos, e.queue_admit_at, r.rank FROM entries e
            LEFT JOIN draw_ranks r ON r.entry_id = e.id WHERE e.drop_id = $1 AND e.user_id = $2`,
           [drop.id, userId],
         )
@@ -248,6 +272,30 @@ export async function myState(drop: Drop, userId: string) {
   ]);
   const a = alloc.rows[0];
   const e = entry.rows[0];
+  if (drop.config.instantQueue && e && e.queue_pos == null && e.status === "active" && drop.status === "open") {
+    // Entered before this drop had a queue number (or via an older build): hand one out now.
+    const { rows } = await tx(async (c) => {
+      const q = await instantQueueSlot(c, drop.id, drop.config);
+      return c.query(
+        `UPDATE entries SET queue_pos = $2, queue_admit_at = now() + make_interval(secs => $3::float)
+         WHERE id = $1 AND queue_pos IS NULL RETURNING queue_pos, queue_admit_at`,
+        [e.id, q.pos, q.waitS],
+      );
+    });
+    if (rows[0]) Object.assign(e, rows[0]);
+    else Object.assign(e, (await p.query("SELECT queue_pos, queue_admit_at FROM entries WHERE id = $1", [e.id])).rows[0]);
+  }
+  const instant = drop.config.instantQueue && e?.queue_pos != null;
+  if (instant || (drop.config.seatSelect && (drop.status === "claim" || drop.status === "done"))) {
+    const s = instant ? await instantState(drop, userId, e) : await seatState(drop, userId, e);
+    return {
+      ...s,
+      dropStatus: drop.status,
+      entry: e ? { publicId: e.public_id, createdAt: e.created_at } : null,
+      allocation: null,
+      rank: e?.rank ?? null,
+    };
+  }
   const drawn = ["drawn", "claim", "done"].includes(drop.status);
   let state: string;
   if (a) state = "confirmed";
